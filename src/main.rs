@@ -1,35 +1,42 @@
-use std::{time::Duration, io};
+use std::io;
+use std::process::ExitCode;
 
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, poll};
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    style::Stylize,
-    symbols::border,
-    text::{Line, Text},
-    widgets::{Block, Paragraph, Widget},
-    DefaultTerminal, Frame,
-};
 mod table;
 mod ui;
+mod domain;
+
 
 use table::Table;
 use ui::{TableConfig, TableUI};
+use domain::TVError;
 
-fn main() -> io::Result<()> {
+fn main() -> ExitCode {
     println!("Starting tv!");
 
-    let table = Table::load("test.csv".into());
+    let table = match Table::load("tests/fixtures/testdata_01.csv".into()) {
+        Ok(frame) => frame,
+        Err(e) => {
+            eprintln!("Error: {:?}", e);
+            return ExitCode::FAILURE;
+        }
+    };
     let cfg = TableConfig{
         event_poll_time: 100
     };
     let mut ui = TableUI::new(cfg);
 
     let mut terminal = ratatui::init();
-    let app_result = ui.run(&table, &mut terminal);
     
-    ratatui::restore();
-    app_result
+    return match ui.run(&table, &mut terminal) {
+        Ok(_) => {
+            ratatui::restore();
+            ExitCode::SUCCESS // Returns 0
+        },
+        Err(e) => {
+            eprintln!("Error: {:?}", e);
+            ExitCode::FAILURE  // Returns 1 
+        }
+    };
 }
 
 

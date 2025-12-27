@@ -1,18 +1,91 @@
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
+use std::fs;
+use std::io::ErrorKind;
+use std::io::Error;
 
-#[derive(Debug, Default)]
-pub struct Table {
+use polars::prelude::*;
+
+use crate::domain::TVError;
+
+
+
+// A struct with different types
+#[derive(Debug)]
+enum FileType {
+    CSV,
+    PARQUET,
+    XLSX,
+}
+
+#[derive(Debug)]
+pub struct FileInfo {
     path: PathBuf,
+    file_size: u64,
+    file_type: FileType,
+}
+
+//#[derive(Debug)]
+pub struct Table {
+    file_info: FileInfo,
+    frame: LazyFrame,
 }
 
 impl Table {
-    pub fn load(path: PathBuf) -> Self {
-        Self {
-            path: path
+    pub fn load(path: PathBuf) -> Result<Self, TVError> {
+        let file_info = Table::get_file_info(path)?;
+        let frame = match file_info.file_type {
+            FileType::CSV => Table::load_csv(&file_info.path)?,
+            FileType::PARQUET => todo!(),
+            FileType::XLSX => todo!(),
+        };
+        
+        Ok(Self {
+            file_info,
+            frame,
+        })
+    }
+
+    fn detect_file_type(path: &Path) -> Result<FileType, TVError> {
+        match path.extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_uppercase())
+            .as_deref()
+        {
+            Some("CSV") => Ok(FileType::CSV),
+            Some("PARQUET") => Ok(FileType::PARQUET),
+            Some("XLSX") => Ok(FileType::XLSX),
+            _ => Err(TVError::UnknownFileType),
         }
     }
 
+    fn get_file_info(path: PathBuf) -> Result<FileInfo, TVError> {
+
+        let metadata = fs::metadata(&path)
+            .map_err(|e| match e.kind() {
+                ErrorKind::NotFound => TVError::FileNotFound,
+                ErrorKind::PermissionDenied => TVError::PermissionDenied,
+                _ => TVError::IoError(e),
+            })?;
+        if !metadata.is_file() {
+            return Err(TVError::LoadingFailed("Not a file!".into()));
+        }
+
+        let file_size = metadata.len();
+
+        let file_type = Table::detect_file_type(&path)?;
+
+        Ok(FileInfo {
+            path,
+            file_size,
+            file_type,
+        })
+    }
+
+    fn load_csv(path: &PathBuf) -> Result<LazyFrame, PolarsError> {
+        return LazyCsvReader::new(PlPath::Local(path.as_path().into())).with_has_header(true).finish();
+    }
+
     pub fn get_path(&self) -> PathBuf {
-        self.path.clone()
+        self.file_info.path.clone()
     }
 }

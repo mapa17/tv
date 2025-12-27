@@ -8,10 +8,11 @@ use ratatui::{
     symbols::border,
     text::{Line, Text},
     widgets::{Block, Paragraph, Widget},
-    DefaultTerminal, Frame,
+    DefaultTerminal,
 };
 
 use crate::table::Table;
+use crate::domain::TVError;
 
 #[derive(Debug)]
 pub struct TableConfig {
@@ -32,12 +33,12 @@ struct TableView<'a> {
 impl TableUI {
     pub fn new(config: TableConfig) -> Self {
         Self {
-            config: config,
+            config,
             exit: false
         }
     }
 
-    pub fn run(&mut self, table: &Table, terminal: &mut DefaultTerminal) -> io::Result<()> {
+    pub fn run(&mut self, table: &Table, terminal: &mut DefaultTerminal) -> Result<(), TVError>{
         while !self.exit {
             terminal.draw(|frame| {
                 frame.render_widget(TableView { ui: self, table }, frame.area());
