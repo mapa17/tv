@@ -48,8 +48,8 @@ impl Model {
         
         Ok(
             Self {
-            file_info: file_info,
-            frame: frame,
+            file_info,
+            frame,
             status: Status::READY,
         })
     }

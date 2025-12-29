@@ -1,18 +1,14 @@
-use std::{io, time::Duration};
 
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, poll};
-use ratatui::layout::{Constraint, Layout, Margin};
-use ratatui::style::{Color, Modifier, Style, Stylize, palette::tailwind};
+use ratatui::layout::{Constraint, Layout};
+use ratatui::style::{Color, palette::tailwind};
 use ratatui::{
-    DefaultTerminal, Frame,
-    buffer::Buffer,
+    Frame,
     layout::Rect,
-    symbols::border,
-    text::{Line, Text},
-    widgets::{Table, Block, Borders, Paragraph, Row, TableState, Widget},
+    widgets::{Table, Block, Borders, Row, TableState},
 };
+use tracing::{info, Level, debug, trace};
 
-use crate::domain::{TVError, TableConfig};
+use crate::domain::TableConfig;
 use crate::model::Model;
 
 struct UIColors {
@@ -58,14 +54,15 @@ const PALETTES: [tailwind::Palette; 4] = [
 ];
 
 impl TableUI {
-    pub fn new(config: &TableConfig) -> Self {
+    pub fn new(_config: &TableConfig) -> Self {
         Self {
             colors: UIColors::new(&PALETTES[0]),
             table_state: TableState::default().with_selected(0),
         }
     }
 
-    pub fn draw(&mut self, table: &Model, frame: &mut Frame) {
+    pub fn draw(&mut self, _table: &Model, frame: &mut Frame) {
+        trace!("Drawing ui ...");
         let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
         let rects = vertical.split(frame.area());
 

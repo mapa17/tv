@@ -32,7 +32,7 @@ pub struct TableConfig {
     pub event_poll_time: u64,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Message {
     // Increment,
     // Decrement,

@@ -1,6 +1,7 @@
-use std::{time::Duration, io};
+use std::time::Duration;
+use tracing::{info, Level, debug, trace};
 
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, poll};
+use ratatui::crossterm::event::{self, Event, KeyCode};
 use crate::domain::{TableConfig, TVError, Message};
 use crate::model::Model;
 
@@ -15,46 +16,22 @@ impl Controller {
         }
     }
 
-    pub fn handle_event(&self, model: &Model) -> Result<Option<Message>, TVError> {
-        if event::poll(Duration::from_millis(self.event_poll_time))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == event::KeyEventKind::Press {
+    pub fn handle_event(&self, _model: &Model) -> Result<Option<Message>, TVError> {
+        if event::poll(Duration::from_millis(self.event_poll_time))?
+            && let Event::Key(key) = event::read()?
+                && key.kind == event::KeyEventKind::Press {
                     return Ok(self.handle_key(key));
                 }
-            }
-        }
         Ok(None)
     }
 
     fn handle_key(&self, key: event::KeyEvent) -> Option<Message> {
-        match key.code {
-            // KeyCode::Char('j') => Some(Message::Increment),
-            // KeyCode::Char('k') => Some(Message::Decrement),
+        let message = match key.code {
             KeyCode::Char('q') => Some(Message::Quit),
             _ => None,
-        }
+        };
+        trace!("Mapped: {key:?} => {message:?}");
+        return message;
     }
 
-    fn update(&self, model: &mut Model, msg: Message) -> Option<Message> {
-        match msg {
-            // Message::Increment => {
-            //     model.counter += 1;
-            //     if model.counter > 50 {
-            //         return Some(Message::Reset);
-            //     }
-            // }
-            // Message::Decrement => {
-            //     model.counter -= 1;
-            //     if model.counter < -50 {
-            //         return Some(Message::Reset);
-            //     }
-            // }
-            // Message::Reset => model.counter = 0,
-            Message::Quit => {
-                // You can handle cleanup and exit here
-                model.exit();
-            }
-        };
-        None
-    }
 }

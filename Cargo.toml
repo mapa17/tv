@@ -6,6 +6,9 @@ edition = "2024"
 [dependencies]
 polars = { version = "0.52.0", features = ["lazy", "csv", "timezones"] }
 ratatui = "0.30.0"
+tracing = "0.1.44"
+tracing-error = "0.2.1"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
 [dev-dependencies]
 husky-rs = "0.1.5"

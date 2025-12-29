@@ -1,4 +1,9 @@
-use std::process::ExitCode;
+use std::{process::ExitCode, str::FromStr};
+use std::path::PathBuf;
+
+use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt, Layer};
+use tracing_error::ErrorLayer;
+use tracing::{info, Level, debug, trace};
 
 mod model;
 mod ui;
@@ -24,17 +29,32 @@ fn main() -> ExitCode {
     }
 }
 
-fn run() -> Result<(), TVError> {
-    println!("Starting tv!");
+pub fn initialize_logging(cfg: &TableConfig) -> Result<(), std::io::Error> {
+  let log_path = PathBuf::from("./.tv.log");
+  let log_file = std::fs::File::create(log_path)?;
+  let file_subscriber = tracing_subscriber::fmt::layer()
+    .with_file(true)
+    .with_line_number(true)
+    .with_writer(log_file)
+    .with_target(false)
+    .with_ansi(false);
+  tracing_subscriber::registry().with(file_subscriber).with(ErrorLayer::default()).init();
+  Ok(())
+}
 
-    let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
-    
+fn run() -> Result<(), TVError> {
     let cfg = TableConfig{
         event_poll_time: 100
     };
+ 
+    initialize_logging(&cfg)?;
+    
+    info!("Starting tv!");
+    let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
+    
     let mut ui = TableUI::new(&cfg);
 
-    let mut controller = Controller::new(&cfg);
+    let controller = Controller::new(&cfg);
 
     let mut terminal = ratatui::init();
 
