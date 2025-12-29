@@ -1,110 +1,146 @@
-use std::{time::Duration, io};
+use std::{io, time::Duration};
 
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, poll};
+use ratatui::layout::{Constraint, Layout, Margin};
+use ratatui::style::{Color, Modifier, Style, Stylize, palette::tailwind};
 use ratatui::{
+    DefaultTerminal, Frame,
     buffer::Buffer,
     layout::Rect,
-    style::Stylize,
     symbols::border,
     text::{Line, Text},
-    widgets::{Block, Paragraph, Widget},
-    DefaultTerminal,
+    widgets::{Table, Block, Borders, Paragraph, Row, TableState, Widget},
 };
 
-use crate::table::Table;
-use crate::domain::TVError;
+use crate::domain::{TVError, TableConfig};
+use crate::model::Model;
 
-#[derive(Debug)]
-pub struct TableConfig {
-    pub event_poll_time: u64,
+struct UIColors {
+    buffer_bg: Color,
+    header_bg: Color,
+    header_fg: Color,
+    row_fg: Color,
+    selected_row_style_fg: Color,
+    selected_column_style_fg: Color,
+    selected_cell_style_fg: Color,
+    normal_row_color: Color,
+    alt_row_color: Color,
+    footer_border_color: Color,
 }
 
-#[derive(Debug)]
+impl UIColors {
+    const fn new(color: &tailwind::Palette) -> Self {
+        Self {
+            buffer_bg: tailwind::SLATE.c950,
+            header_bg: color.c900,
+            header_fg: tailwind::SLATE.c200,
+            row_fg: tailwind::SLATE.c200,
+            selected_row_style_fg: color.c400,
+            selected_column_style_fg: color.c400,
+            selected_cell_style_fg: color.c600,
+            normal_row_color: tailwind::SLATE.c950,
+            alt_row_color: tailwind::SLATE.c900,
+            footer_border_color: color.c400,
+        }
+    }
+}
+
 pub struct TableUI {
-    config: TableConfig,
-    exit: bool,
+    colors: UIColors,
+    table_state: TableState,
 }
 
-struct TableView<'a> {
-    ui: &'a TableUI,
-    table: &'a Table,
-}
+const PALETTES: [tailwind::Palette; 4] = [
+    tailwind::BLUE,
+    tailwind::EMERALD,
+    tailwind::INDIGO,
+    tailwind::RED,
+];
 
 impl TableUI {
-    pub fn new(config: TableConfig) -> Self {
+    pub fn new(config: &TableConfig) -> Self {
         Self {
-            config,
-            exit: false
+            colors: UIColors::new(&PALETTES[0]),
+            table_state: TableState::default().with_selected(0),
         }
     }
 
-    pub fn run(&mut self, table: &Table, terminal: &mut DefaultTerminal) -> Result<(), TVError>{
-        while !self.exit {
-            terminal.draw(|frame| {
-                frame.render_widget(TableView { ui: self, table }, frame.area());
-            })?;
-            self.handle_events()?;
-        }
-        Ok(())
+    pub fn draw(&mut self, table: &Model, frame: &mut Frame) {
+        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
+        let rects = vertical.split(frame.area());
+
+        self.render_table(frame, rects[0]);
+
+        self.render_cmdline(frame, rects[1]);
     }
 
+    fn render_table(&mut self, frame: &mut Frame, area: Rect) {
+        // let header_style = Style::default()
+        //     .fg(self.colors.header_fg)
+        //     .bg(self.colors.header_bg);
+        // let selected_row_style = Style::default()
+        //     .add_modifier(Modifier::REVERSED)
+        //     .fg(self.colors.selected_row_style_fg);
+        // let selected_col_style = Style::default().fg(self.colors.selected_column_style_fg);
+        // let selected_cell_style = Style::default()
+        //     .add_modifier(Modifier::REVERSED)
+        //     .fg(self.colors.selected_cell_style_fg);
 
-    fn handle_events(&mut self) -> io::Result<()> {
-        if poll(Duration::from_millis(self.config.event_poll_time)).is_ok() {
-            match event::read()? {
-                // it's important to check that the event is a key press event as
-                // crossterm also emits key release and repeat events on Windows.
-                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                    self.handle_key_event(key_event)
-                }
-                _ => {}
-            };
-        }
-        Ok(())
+        // let header = ["Name", "Address", "Email"]
+        //     .into_iter()
+        //     .map(Cell::from)
+        //     .collect::<Row>()
+        //     .style(header_style)
+        //     .height(1);
+        // let items = vec![vec!["E00", "E01", "E02"], vec!["E10", "E01", "E02"]];
+        // let rows = items.iter().enumerate().map(|(i, data)| {
+        //     let color = match i % 2 {
+        //         0 => self.colors.normal_row_color,
+        //         _ => self.colors.alt_row_color,
+        //     };
+            
+        //     data.into_iter()
+        //         .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
+        //         .collect::<Row>()
+        //         .style(Style::new().fg(self.colors.row_fg).bg(color))
+        //         .height(4)
+        // });
+        // let bar = " █ ";
+
+        // let t = Table::new(
+        //     rows,
+        //     [
+        //         // + 1 is for padding.
+        //         Constraint::Length(self.longest_item_lens.0 + 1),
+        //         Constraint::Min(self.longest_item_lens.1 + 1),
+        //         Constraint::Min(self.longest_item_lens.2),
+        //     ],
+        // )
+        // .header(header)
+        // .row_highlight_style(selected_row_style)
+        // .column_highlight_style(selected_col_style)
+        // .cell_highlight_style(selected_cell_style)
+        // .highlight_symbol(Text::from(vec![
+        //     "".into(),
+        //     bar.into(),
+        //     bar.into(),
+        //     "".into(),
+        // ]))
+        // .bg(self.colors.buffer_bg)
+        // .highlight_spacing(HighlightSpacing::Always);
+        let rows = [
+            Row::new(vec!["Cell1", "Cell2"]),
+            Row::new(vec!["Cell3", "Cell4"]),
+        ];
+        let widths = [Constraint::Length(5), Constraint::Length(5)];
+        let table = Table::new(rows, widths);
+        frame.render_stateful_widget(table, area, &mut self.table_state);
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
-        match key_event.code {
-            KeyCode::Char('q') => self.exit(),
-            //KeyCode::Left => self.decrement_counter(),
-            //KeyCode::Right => self.increment_counter(),
-            _ => {}
-        }
-    }
-
-    fn exit(&mut self) {
-        self.exit = true;
-    }
-}
-
-impl Widget for TableView<'_> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        // Access both self.ui and self.table here
-
-        let title = Line::from(" Table viewer ".bold());
-        let instructions = Line::from(vec![
-            " Decrement ".into(),
-            "<Left>".blue().bold(),
-            " Increment ".into(),
-            "<Right>".blue().bold(),
-            " Quit ".into(),
-            "<Q> ".blue().bold(),
-        ]);
-        let block = Block::bordered()
-            .title(title.centered())
-            .title_bottom(instructions.centered())
-            .border_set(border::THICK);
-
-        let path = self.table.get_path();
-        let loc = path.to_string_lossy().yellow();
-        let counter_text = Text::from(vec![Line::from(vec![
-            "location: ".into(),
-            loc,
-        ])]);
-
-        Paragraph::new(counter_text)
-            .centered()
-            .block(block)
-            .render(area, buf);
+    fn render_cmdline(&mut self, frame: &mut Frame, area: Rect) {
+        let b = Block::default()
+            .title("Cmd")
+            .borders(Borders::ALL);
+        frame.render_widget(b, area);
     }
 }

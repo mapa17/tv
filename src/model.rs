@@ -1,13 +1,9 @@
 use std::path::{PathBuf, Path};
 use std::fs;
 use std::io::ErrorKind;
-use std::io::Error;
-
 use polars::prelude::*;
 
-use crate::domain::TVError;
-
-
+use crate::domain::{TVError, Message};
 
 // A struct with different types
 #[derive(Debug)]
@@ -15,6 +11,16 @@ enum FileType {
     CSV,
     PARQUET,
     XLSX,
+}
+
+// A struct with different types
+#[derive(Debug, PartialEq)]
+pub enum Status {
+    EMPTY,
+    READY,
+    LOADING,
+    PROCESSING,
+    EXITING,
 }
 
 #[derive(Debug)]
@@ -25,23 +31,26 @@ pub struct FileInfo {
 }
 
 //#[derive(Debug)]
-pub struct Table {
+pub struct Model {
     file_info: FileInfo,
     frame: LazyFrame,
+    pub status: Status,
 }
 
-impl Table {
+impl Model {
     pub fn load(path: PathBuf) -> Result<Self, TVError> {
-        let file_info = Table::get_file_info(path)?;
+        let file_info = Model::get_file_info(path)?;
         let frame = match file_info.file_type {
-            FileType::CSV => Table::load_csv(&file_info.path)?,
+            FileType::CSV => Model::load_csv(&file_info.path)?,
             FileType::PARQUET => todo!(),
             FileType::XLSX => todo!(),
         };
         
-        Ok(Self {
-            file_info,
-            frame,
+        Ok(
+            Self {
+            file_info: file_info,
+            frame: frame,
+            status: Status::READY,
         })
     }
 
@@ -72,7 +81,7 @@ impl Table {
 
         let file_size = metadata.len();
 
-        let file_type = Table::detect_file_type(&path)?;
+        let file_type = Model::detect_file_type(&path)?;
 
         Ok(FileInfo {
             path,
@@ -82,10 +91,23 @@ impl Table {
     }
 
     fn load_csv(path: &PathBuf) -> Result<LazyFrame, PolarsError> {
-        return LazyCsvReader::new(PlPath::Local(path.as_path().into())).with_has_header(true).finish();
+        LazyCsvReader::new(PlPath::Local(path.as_path().into())).with_has_header(true).finish()
     }
 
     pub fn get_path(&self) -> PathBuf {
         self.file_info.path.clone()
+    }
+
+    pub fn exit(&mut self){
+        self.status = Status::EXITING;
+    }
+
+    pub fn update(&mut self, message: Message) -> Result<(), TVError> {
+        match message {
+            Message::Quit => {
+                self.exit();
+            }
+        };
+        Ok(())
     }
 }

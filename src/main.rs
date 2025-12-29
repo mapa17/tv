@@ -1,42 +1,54 @@
-use std::io;
 use std::process::ExitCode;
 
-mod table;
+mod model;
 mod ui;
 mod domain;
+mod controller;
 
 
-use table::Table;
-use ui::{TableConfig, TableUI};
-use domain::TVError;
+use domain::{TableConfig, TVError};
+use model::{Model, Status};
+use ui::TableUI;
+use controller::Controller;
 
 fn main() -> ExitCode {
-    println!("Starting tv!");
-
-    let table = match Table::load("tests/fixtures/testdata_01.csv".into()) {
-        Ok(frame) => frame,
+    match run() {
         Err(e) => {
             eprintln!("Error: {:?}", e);
-            return ExitCode::FAILURE;
+            ExitCode::FAILURE
         }
-    };
+        Ok(_) => {
+            ratatui::restore();
+            ExitCode::SUCCESS
+        }
+    }
+}
+
+fn run() -> Result<(), TVError> {
+    println!("Starting tv!");
+
+    let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
+    
     let cfg = TableConfig{
         event_poll_time: 100
     };
-    let mut ui = TableUI::new(cfg);
+    let mut ui = TableUI::new(&cfg);
+
+    let mut controller = Controller::new(&cfg);
 
     let mut terminal = ratatui::init();
-    
-    return match ui.run(&table, &mut terminal) {
-        Ok(_) => {
-            ratatui::restore();
-            ExitCode::SUCCESS // Returns 0
-        },
-        Err(e) => {
-            eprintln!("Error: {:?}", e);
-            ExitCode::FAILURE  // Returns 1 
-        }
+
+    while model.status != Status::EXITING {
+        // Render the current view
+        terminal.draw(|f| ui.draw(&model, f))?;
+        
+        // Handle events and map to a Message
+        if let Some(message) = controller.handle_event(&model)? {
+            model.update(message)?;
+        };
     };
+
+    Ok(())
 }
 
 
