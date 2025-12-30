@@ -1,24 +1,23 @@
-
 use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Color, palette::tailwind};
-use ratatui::{
-    Frame,
-    layout::Rect,
-    widgets::{Table, Block, Borders, Row, TableState},
-};
-use tracing::{info, Level, debug, trace};
+use ratatui::style::{Color, Style, palette::tailwind};
+use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation};
+use ratatui::{Frame, layout::Rect};
+use tracing::{debug, info, trace};
 
 use crate::domain::TableConfig;
 use crate::model::Model;
 
+#[derive(Clone)]
 struct UIColors {
     buffer_bg: Color,
     header_bg: Color,
     header_fg: Color,
     row_fg: Color,
-    selected_row_style_fg: Color,
-    selected_column_style_fg: Color,
-    selected_cell_style_fg: Color,
+    row_bg: Color,
+    selected_row_fg: Color,
+    selected_row_bg: Color,
+    selected_column_fg: Color,
+    selected_cell_fg: Color,
     normal_row_color: Color,
     alt_row_color: Color,
     footer_border_color: Color,
@@ -31,19 +30,45 @@ impl UIColors {
             header_bg: color.c900,
             header_fg: tailwind::SLATE.c200,
             row_fg: tailwind::SLATE.c200,
-            selected_row_style_fg: color.c400,
-            selected_column_style_fg: color.c400,
-            selected_cell_style_fg: color.c600,
+            row_bg: tailwind::SLATE.c950,
+            selected_row_fg: tailwind::YELLOW.c100,
+            selected_row_bg: tailwind::YELLOW.c950,
+            selected_column_fg: color.c400,
+            selected_cell_fg: color.c600,
             normal_row_color: tailwind::SLATE.c950,
             alt_row_color: tailwind::SLATE.c900,
             footer_border_color: color.c400,
         }
     }
 }
+struct UIStyles {
+    row: Style,
+    selected_row: Style,
+}
+impl UIStyles {
+    const fn new(colors: &UIColors) -> Self {
+        Self {
+            row: Style::new().fg(colors.row_fg).bg(colors.row_bg),
+            selected_row: Style::new()
+                .fg(colors.selected_row_fg)
+                .bg(colors.selected_row_bg),
+        }
+    }
+}
+
+struct HeaderElement {
+    idx: u16,
+    name: String,
+    min_width: usize,
+    width: usize,
+    max_width: usize,
+}
 
 pub struct TableUI {
     colors: UIColors,
+    styles: UIStyles,
     table_state: TableState,
+    scrollbar_state: ScrollbarState,
 }
 
 const PALETTES: [tailwind::Palette; 4] = [
@@ -55,23 +80,27 @@ const PALETTES: [tailwind::Palette; 4] = [
 
 impl TableUI {
     pub fn new(_config: &TableConfig) -> Self {
+        let colors = UIColors::new(&PALETTES[0]);
+        let styles = UIStyles::new(&colors);
         Self {
-            colors: UIColors::new(&PALETTES[0]),
+            colors: colors,
+            styles: styles,
             table_state: TableState::default().with_selected(0),
+            scrollbar_state: ScrollbarState::new(1).position(0),
         }
     }
 
-    pub fn draw(&mut self, _table: &Model, frame: &mut Frame) {
-        trace!("Drawing ui ...");
+    pub fn draw(&mut self, model: &Model, frame: &mut Frame) {
+        //trace!("Drawing ui ...");
         let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
         let rects = vertical.split(frame.area());
 
-        self.render_table(frame, rects[0]);
+        self.render_table(model, frame, rects[0]);
 
-        self.render_cmdline(frame, rects[1]);
+        self.render_cmdline(model, frame, rects[1]);
     }
 
-    fn render_table(&mut self, frame: &mut Frame, area: Rect) {
+    fn render_table(&mut self, model: &Model, frame: &mut Frame, area: Rect) {
         // let header_style = Style::default()
         //     .fg(self.colors.header_fg)
         //     .bg(self.colors.header_bg);
@@ -95,7 +124,7 @@ impl TableUI {
         //         0 => self.colors.normal_row_color,
         //         _ => self.colors.alt_row_color,
         //     };
-            
+
         //     data.into_iter()
         //         .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
         //         .collect::<Row>()
@@ -125,19 +154,40 @@ impl TableUI {
         // ]))
         // .bg(self.colors.buffer_bg)
         // .highlight_spacing(HighlightSpacing::Always);
+
+        //let headers = model.get_headers().collect();
+
+
+        let h = area.height;
+        let w = area.width;
+        info!("Table size: w:{w} h:{h}");
         let rows = [
-            Row::new(vec!["Cell1", "Cell2"]),
-            Row::new(vec!["Cell3", "Cell4"]),
+            Row::new(vec!["Cell00", "Cell01", "Cell02"]),
+            Row::new(vec!["Cell10", "Cell11", "Cell12"]),
+            Row::new(vec![
+                "Cell20",
+                "Cell21----------------------------",
+                "Cell22",
+            ]),
         ];
-        let widths = [Constraint::Length(5), Constraint::Length(5)];
-        let table = Table::new(rows, widths);
+        let widths = [
+            Constraint::Length(20),
+            Constraint::Length(5),
+            Constraint::Length(5),
+        ];
+        let table = Table::new(rows, widths)
+            .block(Block::new().title("Table"))
+            .row_highlight_style(self.styles.selected_row)
+            .highlight_symbol(">>");
         frame.render_stateful_widget(table, area, &mut self.table_state);
+
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+        self.scrollbar_state = self.scrollbar_state.content_length(100).position(10); //.viewport_content_length(1);
+        frame.render_stateful_widget(scrollbar, area, &mut self.scrollbar_state);
     }
 
-    fn render_cmdline(&mut self, frame: &mut Frame, area: Rect) {
-        let b = Block::default()
-            .title("Cmd")
-            .borders(Borders::ALL);
+    fn render_cmdline(&mut self, model: &Model, frame: &mut Frame, area: Rect) {
+        let b = Block::default().title("Cmd").borders(Borders::ALL);
         frame.render_widget(b, area);
     }
 }

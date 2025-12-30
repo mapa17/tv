@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tracing::{info, Level, debug, trace};
+use tracing::trace;
 
 use ratatui::crossterm::event::{self, Event, KeyCode};
 use crate::domain::{TableConfig, TVError, Message};
@@ -31,7 +31,7 @@ impl Controller {
             _ => None,
         };
         trace!("Mapped: {key:?} => {message:?}");
-        return message;
+        message
     }
 
 }

@@ -1,9 +1,9 @@
-use std::{process::ExitCode, str::FromStr};
+use std::process::ExitCode;
 use std::path::PathBuf;
 
-use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt, Layer};
+use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_error::ErrorLayer;
-use tracing::{info, Level, debug, trace};
+use tracing::info;
 
 mod model;
 mod ui;
@@ -29,7 +29,7 @@ fn main() -> ExitCode {
     }
 }
 
-pub fn initialize_logging(cfg: &TableConfig) -> Result<(), std::io::Error> {
+pub fn initialize_logging(_cfg: &TableConfig) -> Result<(), std::io::Error> {
   let log_path = PathBuf::from("./.tv.log");
   let log_file = std::fs::File::create(log_path)?;
   let file_subscriber = tracing_subscriber::fmt::layer()
@@ -50,7 +50,8 @@ fn run() -> Result<(), TVError> {
     initialize_logging(&cfg)?;
     
     info!("Starting tv!");
-    let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
+    //let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
+    let mut model = Model::load("tests/fixtures/testdata_03.csv".into())?; 
     
     let mut ui = TableUI::new(&cfg);
 
