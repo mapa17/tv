@@ -11,6 +11,7 @@ pub enum TVError {
     FileNotFound,
     PermissionDenied,
     UnknownFileType,
+    DataIndexingError(String),
 }
 
 

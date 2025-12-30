@@ -51,9 +51,9 @@ fn run() -> Result<(), TVError> {
     
     info!("Starting tv!");
     //let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
-    let mut model = Model::load("tests/fixtures/testdata_03.csv".into())?; 
+    let mut model = Model::load("tests/fixtures/testdata_02.csv".into())?; 
     
-    let mut ui = TableUI::new(&cfg);
+    let mut ui = TableUI::new(&cfg, &model);
 
     let controller = Controller::new(&cfg);
 

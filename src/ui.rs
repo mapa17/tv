@@ -2,9 +2,9 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation};
 use ratatui::{Frame, layout::Rect};
-use tracing::{debug, info, trace};
+use tracing::info;
 
-use crate::domain::TableConfig;
+use crate::domain::{TVError, TableConfig};
 use crate::model::Model;
 
 #[derive(Clone)]
@@ -59,9 +59,9 @@ impl UIStyles {
 struct HeaderElement {
     idx: u16,
     name: String,
-    min_width: usize,
     width: usize,
     max_width: usize,
+    collapsed: bool,
 }
 
 pub struct TableUI {
@@ -69,6 +69,8 @@ pub struct TableUI {
     styles: UIStyles,
     table_state: TableState,
     scrollbar_state: ScrollbarState,
+    headers: Vec<HeaderElement>,
+    visible_headers: Vec<usize>,
 }
 
 const PALETTES: [tailwind::Palette; 4] = [
@@ -79,15 +81,30 @@ const PALETTES: [tailwind::Palette; 4] = [
 ];
 
 impl TableUI {
-    pub fn new(_config: &TableConfig) -> Self {
+    pub fn new(_config: &TableConfig, model: &Model) -> Self {
         let colors = UIColors::new(&PALETTES[0]);
         let styles = UIStyles::new(&colors);
+        let headers = Self::get_headers(model).unwrap_or_default();
         Self {
-            colors: colors,
-            styles: styles,
+            colors,
+            styles,
             table_state: TableState::default().with_selected(0),
             scrollbar_state: ScrollbarState::new(1).position(0),
+            headers: headers,
+            visible_headers: Vec::new(),
         }
+    }
+
+    fn get_headers(model: &Model) -> Result<Vec<HeaderElement>, TVError> {
+        let mut column_infos = Vec::with_capacity(model.ncols());
+        for idx in 0..model.ncols() {
+            column_infos.push(model.get_column_info(idx)?);
+        }
+        let mut headers = Vec::with_capacity(column_infos.len());
+        for ci in column_infos {
+            headers.push(HeaderElement{idx: ci.idx, name: ci.name, width: 20, max_width: ci.width, collapsed: false});
+        }
+        return Ok(headers);
     }
 
     pub fn draw(&mut self, model: &Model, frame: &mut Frame) {
@@ -100,7 +117,7 @@ impl TableUI {
         self.render_cmdline(model, frame, rects[1]);
     }
 
-    fn render_table(&mut self, model: &Model, frame: &mut Frame, area: Rect) {
+    fn render_table(&mut self, _model: &Model, frame: &mut Frame, area: Rect) {
         // let header_style = Style::default()
         //     .fg(self.colors.header_fg)
         //     .bg(self.colors.header_bg);
@@ -186,7 +203,7 @@ impl TableUI {
         frame.render_stateful_widget(scrollbar, area, &mut self.scrollbar_state);
     }
 
-    fn render_cmdline(&mut self, model: &Model, frame: &mut Frame, area: Rect) {
+    fn render_cmdline(&mut self, _model: &Model, frame: &mut Frame, area: Rect) {
         let b = Block::default().title("Cmd").borders(Borders::ALL);
         frame.render_widget(b, area);
     }

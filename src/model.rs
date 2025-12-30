@@ -2,10 +2,9 @@ use std::collections::HashMap;
 use std::path::{PathBuf, Path};
 use std::fs;
 use std::io::ErrorKind;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use polars::prelude::*;
-use tracing::info;
-use tokio;
+use tracing::{info, debug};
 use rayon::prelude::*;
 
 use crate::domain::{TVError, Message};
@@ -44,6 +43,24 @@ pub struct Column {
     data: Vec<String>,
 }
 
+pub struct ColumnInfo {
+    pub idx: u16,
+    pub name: String,
+    pub width: usize,
+}
+
+impl Column {
+    pub fn as_string(&self) -> String {
+        format!("{} \"{}\", width: {}, width_max: {}, # rows {}", 
+        self.idx,
+        self.name,
+        self.width,
+        self.width_max,
+        self.data.len(),
+    )
+    }
+}
+
 //#[derive(Debug)]
 pub struct Model {
     file_info: FileInfo,
@@ -51,9 +68,7 @@ pub struct Model {
     pub status: Status,
     schema: Schema,
     columns: Vec<Column>,
-    last_update: Instant,
-
-
+    pub last_update: Instant,
 }
 
 impl Model {
@@ -72,22 +87,27 @@ impl Model {
         //     .block_on(Self::load_columns(&frame))?;
         
         let df = Arc::new(frame.clone().collect()?);
-        let columns: Result<Vec<Column>, _> = df
+        let c_: Result<Vec<Column>, _> = df
             .get_column_names()
             .par_iter()
             .enumerate()
             .map(|(idx, name)| Self::process_column(&df, idx, name))
             .collect();
-
+        let columns = c_?;
         let data_loading_duration = start_time.elapsed().as_millis();
         info!("Loading data needed {data_loading_duration}ms ...");
+
+        for c in columns.iter() {
+            debug!("Column: {}", c.as_string());
+        }
+
         Ok(
             Self {
             file_info,
             frame,
             status: Status::READY,
-            schema: schema,
-            columns: columns?,
+            schema,
+            columns: columns,
             last_update: Instant::now(),
         })
     }
@@ -104,6 +124,28 @@ impl Model {
             _ => Err(TVError::UnknownFileType),
         }
     }
+
+    pub fn nrows(&self) -> usize {
+        let mut nrows = 0;
+        if !self.columns.is_empty() {
+            nrows = self.columns[0].data.len();
+        }
+        return nrows;
+    }
+
+    pub fn ncols(&self) -> usize {
+        return self.columns.len();
+    }
+
+    pub fn get_column_info(&self, idx: usize) -> Result<ColumnInfo, TVError> {
+        let column = self.columns.get(idx).ok_or(TVError::DataIndexingError("Column index out of bounds".into()))?;
+        
+        Ok(ColumnInfo {
+            idx: column.idx,
+            name: column.name.clone(),
+            width: column.width,
+        })
+    } 
 
     async fn load_columns(frame: &LazyFrame) -> Result<Vec<Column>, TVError> {
         // Collect once - shared cost
@@ -136,9 +178,9 @@ impl Model {
     fn process_column(df: &DataFrame, idx: usize, col_name: &str) -> Result<Column, PolarsError> {
         let col = df.column(col_name)?.cast(&DataType::String)?;
         let series = col.str()?;
-        let mut lengths = Vec::new();
+        let mut lengths = Vec::with_capacity(series.len());
         let mut counts: HashMap<String, usize> = HashMap::new();
-        let mut data = Vec::new();
+        let mut data = Vec::with_capacity(series.len());
 
         for value in series.into_iter() {
             let ss = match value {
@@ -160,9 +202,9 @@ impl Model {
             idx: idx as u16,
             name: col_name.to_string(),
             width: q95_length,
-            width_max: width_max,
+            width_max,
             histogram: counts,
-            data: data,
+            data,
         })
     }
 
@@ -212,5 +254,23 @@ impl Model {
 
     pub fn get_headers(&self) -> impl Iterator<Item = &str> + '_ {
         self.schema.iter_names().map(|s| s.as_str())
+    }
+
+    pub fn get_column_data(&self, column_idx: usize, row_idxs: Vec<usize>) -> Result<Vec<&String>, TVError> {
+        let column = self.columns.get(column_idx).ok_or(TVError::DataIndexingError("Column index out of bounds".into()))?;
+    
+        if row_idxs.is_empty() {
+            // Return all rows
+            Ok(column.data.iter().collect())
+        } else {
+            let mut result = Vec::with_capacity(row_idxs.len());
+            for idx in row_idxs {
+                let value = column.data
+                    .get(idx)
+                    .ok_or_else(|| TVError::DataIndexingError(format!("Row {} not found", idx)))?;
+                result.push(value);
+            }
+            Ok(result)
+        }
     }
 }
