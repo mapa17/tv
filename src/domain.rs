@@ -28,9 +28,11 @@ impl From<PolarsError> for TVError {
 }
 
 
-#[derive(Debug)]
-pub struct TableConfig {
-    pub event_poll_time: u64,
+#[derive(Debug, Clone)]
+pub struct TVConfig {
+    pub event_poll_time: usize,
+    pub default_column_width: usize,
+    pub column_margin: usize,
 }
 
 #[derive(PartialEq, Debug)]
@@ -38,6 +40,10 @@ pub enum Message {
     // Increment,
     // Decrement,
     // Reset,
+    MoveUp,
+    MoveDown,
+    MoveLeft,
+    MoveRight,
     Quit,
 }
 

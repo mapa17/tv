@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 use std::path::PathBuf;
 
-use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{self, EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_error::ErrorLayer;
 use tracing::info;
 
@@ -11,7 +11,7 @@ mod domain;
 mod controller;
 
 
-use domain::{TableConfig, TVError};
+use domain::{TVConfig, TVError};
 use model::{Model, Status};
 use ui::TableUI;
 use controller::Controller;
@@ -29,29 +29,36 @@ fn main() -> ExitCode {
     }
 }
 
-pub fn initialize_logging(_cfg: &TableConfig) -> Result<(), std::io::Error> {
-  let log_path = PathBuf::from("./.tv.log");
-  let log_file = std::fs::File::create(log_path)?;
-  let file_subscriber = tracing_subscriber::fmt::layer()
+pub fn initialize_logging(_cfg: &TVConfig) -> Result<(), std::io::Error> {
+    let log_path = PathBuf::from("./.tv.log");
+    let log_file = std::fs::File::create(log_path)?;
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let file_subscriber = tracing_subscriber::fmt::layer()
     .with_file(true)
     .with_line_number(true)
     .with_writer(log_file)
     .with_target(false)
-    .with_ansi(false);
-  tracing_subscriber::registry().with(file_subscriber).with(ErrorLayer::default()).init();
-  Ok(())
+    .with_ansi(false)
+    .with_filter(filter);
+
+    tracing_subscriber::registry().with(file_subscriber).with(ErrorLayer::default()).init();
+    Ok(())
 }
 
 fn run() -> Result<(), TVError> {
-    let cfg = TableConfig{
-        event_poll_time: 100
+    let cfg = TVConfig{
+        event_poll_time: 100,
+        default_column_width: 10,
+        column_margin: 1,
     };
  
     initialize_logging(&cfg)?;
     
     info!("Starting tv!");
     //let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
-    let mut model = Model::load("tests/fixtures/testdata_02.csv".into())?; 
+    let mut model = Model::from_file("tests/fixtures/testdata_02.csv".into(), &cfg)?; 
     
     let mut ui = TableUI::new(&cfg, &model);
 
@@ -60,13 +67,13 @@ fn run() -> Result<(), TVError> {
     let mut terminal = ratatui::init();
 
     while model.status != Status::EXITING {
+        // Handle events and map to a Message
+        let tsize = ui.get_table_size();
+        let message = controller.handle_event(&model)?; 
+        model.update(message, tsize.0, tsize.1)?;
+
         // Render the current view
         terminal.draw(|f| ui.draw(&model, f))?;
-        
-        // Handle events and map to a Message
-        if let Some(message) = controller.handle_event(&model)? {
-            model.update(message)?;
-        };
     };
 
     Ok(())
