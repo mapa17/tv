@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tracing::trace;
 
-use ratatui::crossterm::event::{self, Event, KeyCode};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crate::domain::{TVConfig, TVError, Message};
 use crate::model::Model;
 
@@ -26,12 +26,18 @@ impl Controller {
     }
 
     fn handle_key(&self, key: event::KeyEvent) -> Option<Message> {
-        let message = match key.code {
-            KeyCode::Char('q') => Some(Message::Quit),
-            KeyCode::Char('h') => Some(Message::MoveLeft),
-            KeyCode::Char('j') => Some(Message::MoveDown),
-            KeyCode::Char('k') => Some(Message::MoveUp),
-            KeyCode::Char('l') => Some(Message::MoveRight),
+        let message = match (key.code, key.modifiers) {
+            (KeyCode::Char('q'), KeyModifiers::NONE) => Some(Message::Quit),
+            (KeyCode::Char('h'), KeyModifiers::NONE) => Some(Message::MoveLeft),
+            (KeyCode::Char('j'), KeyModifiers::NONE) => Some(Message::MoveDown),
+            (KeyCode::Char('J'), KeyModifiers::SHIFT) => Some(Message::MovePageDown),
+            (KeyCode::Char('k'), KeyModifiers::NONE) => Some(Message::MoveUp),
+            (KeyCode::Char('K'), KeyModifiers::SHIFT) => Some(Message::MovePageUp),
+            (KeyCode::Char('l'), KeyModifiers::NONE) => Some(Message::MoveRight),
+            (KeyCode::Char('G'), KeyModifiers::SHIFT) => Some(Message::MoveEnd),
+            (KeyCode::Char('g'), KeyModifiers::NONE) => Some(Message::MoveBeginning),
+            (KeyCode::Char('-'), KeyModifiers::NONE) => Some(Message::ShrinkColumn),
+            (KeyCode::Char('+'), KeyModifiers::SHIFT) => Some(Message::GrowColumn),
             _ => None,
         };
         trace!("Mapped: {key:?} => {message:?}");

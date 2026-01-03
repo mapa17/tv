@@ -38,9 +38,15 @@ pub struct TVConfig {
 #[derive(PartialEq, Debug)]
 pub enum Message {
     MoveUp,
+    MovePageUp,
     MoveDown,
+    MovePageDown,
     MoveLeft,
     MoveRight,
+    MoveEnd,
+    MoveBeginning,
+    ShrinkColumn,
+    GrowColumn,
     Quit,
 }
 

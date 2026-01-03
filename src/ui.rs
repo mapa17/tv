@@ -95,7 +95,7 @@ impl TableUI {
         let colors = UIColors::new(&PALETTES[0]);
         let styles = UIStyles::new(&colors);
 
-        let mut s = Self {
+        let mut ui = Self {
             colors,
             styles,
             table_state: TableState::default(),
@@ -106,9 +106,9 @@ impl TableUI {
 
         // Update table width as this is used by TVModel to calculate column widths
         let rects = Self::create_layout(frame);
-        s.table_width = rects[0].width as usize;
-        s.table_heigh = rects[0].height as usize;
-        s
+        ui.table_width = rects[0].width as usize;
+        ui.table_heigh = rects[0].height as usize;
+        ui
     }
 
     // fn get_headers(model: &Model) -> Result<Vec<HeaderElement>, TVError> {
@@ -142,7 +142,7 @@ impl TableUI {
     }
 
     pub fn get_table_size(&self) -> (usize, usize) {
-        (self.table_width, self.table_heigh-3) // Subtract header size
+        (self.table_width-2, self.table_heigh-3) // Subtract Column border and header size
     }
 
     fn render_table(&mut self, model: &Model, frame: &mut Frame, area: Rect) {
@@ -205,7 +205,7 @@ impl TableUI {
 
         let h = area.height;
         let w = area.width;
-        trace!("Table size: w:{w} h:{h}");
+        //trace!("Table size: w:{w} h:{h}");
         let columns = model.get_visible_columns(); 
         if columns.is_empty() {
             warn!("No visible columns!");
@@ -233,7 +233,7 @@ impl TableUI {
         frame.render_stateful_widget(table, area, &mut self.table_state);
 
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-        self.scrollbar_state = self.scrollbar_state.content_length(model.nrows()).position(model.selected_row()); //.viewport_content_length(1);
+        self.scrollbar_state = self.scrollbar_state.content_length(model.nrows()).position(model.row_absolute()); //.viewport_content_length(1);
         frame.render_stateful_widget(scrollbar, area, &mut self.scrollbar_state);
     }
 

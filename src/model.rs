@@ -199,7 +199,12 @@ impl Model {
     pub fn get_visible_columns(&self) -> &Vec<ColumnView> {
 
         let table = &self.tables[self.current_table];
-        return &table.data;
+        &table.data
+    }
+
+    fn get_collapsed_column(nrows: usize) -> ColumnView {
+        let data = vec!("⋮".repeat(nrows).to_string());
+        ColumnView { name: "...".to_string(), width: 3, data: data }
     }
 
     fn update_frame_data(&mut self) {
@@ -207,46 +212,17 @@ impl Model {
         let columns = &self.data[table.data_idx];
         //let rbegin = table.selected_row.saturating_sub(self.table_heigh);
         let rbegin = table.offset_row;
-        let rend = (rbegin + self.table_heigh).min(table.rows.len());
+        //let rend = (rbegin + self.table_heigh).min(table.rows.len());
+        let rend = std::cmp::min(rbegin + self.table_heigh, table.rows.len());
 
         trace!("Cr {}, Cc {}, Or {}, Oc {}, Rb {}, Re {}, th: {}, tw: {}", table.curser_row, table.curser_column, table.offset_row, table.offset_column, rbegin, rend, self.table_heigh, self.table_width);
 
-        /*
-        // Get the selected column and all possible ones to its left side.
-        let mut columns_idx = Vec::new();
-        let mut width_budget = self.table_width;
-        for cidx in (0..=selected_column).rev() {
-            if data[cidx].render_width <= width_budget {
-                columns_idx.push(cidx);
-                width_budget -= data[cidx].render_width;
-            }
-            else {
-                break;
-            }
-        }
-
-        // If there is still space, fill it up with columns to the right
-        if width_budget > 0 {
-            for cidx in selected_column+1..data.len() {
-                if data[cidx].render_width <= width_budget {
-                    columns_idx.push(cidx);
-                    width_budget -= data[cidx].render_width;
-                }
-                else {
-                    break;
-                }
-            }
-        }
-        // Sort to keep columns in the right order
-        columns_idx.sort();
-        trace!("Visible columns: {columns_idx:?}");
-        */
-        let mut visible_columns_idx = Vec::new();
+        table.visible_columns = Vec::new();
         let mut width_budget = self.table_width;
         for cidx in table.offset_column..columns.len() {
-            if columns[cidx].render_width <= width_budget {
-                visible_columns_idx.push(cidx);
-                width_budget -= columns[cidx].render_width;
+            if (columns[cidx].render_width+1) <= width_budget {
+                table.visible_columns.push(cidx);
+                width_budget -= columns[cidx].render_width + 1; // Rendered with and 1 spacer character
             }
             else {
                 break;
@@ -255,25 +231,29 @@ impl Model {
 
         // Create ColumnViews for visible columns
         table.data.clear();
-        table.data = Vec::with_capacity(visible_columns_idx.len());
-        for idx in visible_columns_idx {
-            if let Some(column) = columns.get(idx) {
-                let col_data = table.rows[rbegin..rend]
-                    .iter()
-                    .map(|&ridx| column.data[ridx].clone())
-                    .collect();
-                let name = Self::get_visible_name(column.name.clone(), column.render_width);
-                let width = column.render_width;
-                //trace!("Visible Column: \"{name}\", width: {width}");
+        table.data = Vec::with_capacity(table.visible_columns.len());
+        for idx in table.visible_columns.iter() {
+            if let Some(column) = columns.get(*idx) {
+                if column.status == ColumnStatus::COLLAPSED {
+                    table.data.push(Self::get_collapsed_column(rend-rbegin));
+                } else {
+                    let col_data = table.rows[rbegin..rend]
+                        .iter()
+                        .map(|&ridx| column.data[ridx].clone())
+                        .collect();
+                    let name = Self::get_visible_name(column.name.clone(), column.render_width);
+                    let width = column.render_width;
+                    //trace!("Visible Column: \"{name}\", width: {width}");
 
-                table.data.push(
-                    ColumnView{
-                        name,
-                        width,
-                        data: col_data
+                    table.data.push(
+                        ColumnView{
+                            name,
+                            width,
+                            data: col_data
+                        }
+                    );
                     }
-                );
-            } else {
+                } else {
                 error!("Trying to access column with unknown idx {idx}!");
             }
         }
@@ -381,8 +361,8 @@ impl Model {
     fn calculate_column_width(column: &Column, default_width: usize) -> usize {
         match column.status {
             ColumnStatus::COLLAPSED => 3,
-            ColumnStatus::NORMAL => std::cmp::max(column.name.len(), std::cmp::min(default_width, column.width)),
-            ColumnStatus::EXPANDED => std::cmp::max(column.name.len(), column.width),
+            ColumnStatus::NORMAL => std::cmp::max(column.name.len(), std::cmp::min(column.width, default_width)),
+            ColumnStatus::EXPANDED => std::cmp::max(column.name.len(), column.width_max),
         }
     }
 
@@ -419,6 +399,12 @@ impl Model {
                 Message::MoveLeft => self.move_selection_left(),
                 Message::MoveRight => self.move_selection_right(),
                 Message::MoveUp => self.move_selection_up(1),
+                Message::MovePageUp => self.move_selection_up(10),
+                Message::MovePageDown => self.move_selection_down(10),
+                Message::MoveBeginning => self.move_selection_beginning(),
+                Message::MoveEnd => self.move_selection_end(),
+                Message::GrowColumn => self.grow_selected_column(),
+                Message::ShrinkColumn => self.shrink_selected_column(),
             }
         }
 
@@ -426,6 +412,46 @@ impl Model {
         Ok(())
     }
 
+    fn grow_selected_column(&mut self) {
+        let table = &mut self.tables[self.current_table];
+        let new_status = match self.data[table.data_idx][table.visible_columns[table.curser_column]].status {
+            ColumnStatus::COLLAPSED => ColumnStatus::NORMAL,
+            ColumnStatus::NORMAL => ColumnStatus::EXPANDED,
+            ColumnStatus::EXPANDED => ColumnStatus::EXPANDED,
+        };
+        self.data[table.data_idx][table.visible_columns[table.curser_column]].status = new_status;
+        self.update_frame_data();
+    }
+
+    fn shrink_selected_column(&mut self) {
+        let table = &mut self.tables[self.current_table];
+        let new_status = match self.data[table.data_idx][table.visible_columns[table.curser_column]].status {
+            ColumnStatus::COLLAPSED => ColumnStatus::COLLAPSED,
+            ColumnStatus::NORMAL => ColumnStatus::COLLAPSED,
+            ColumnStatus::EXPANDED => ColumnStatus::NORMAL,
+        };
+        self.data[table.data_idx][table.visible_columns[table.curser_column]].status = new_status;
+        self.update_frame_data();
+    }
+
+    fn move_selection_beginning(&mut self) {
+        let table = &mut self.tables[self.current_table];
+        table.curser_row = 0;
+        table.offset_row = 0;
+        self.update_frame_data();
+    }
+
+    fn move_selection_end(&mut self) {
+        let table = &mut self.tables[self.current_table];
+        if table.rows.len() < self.table_heigh {
+            table.offset_row = 0;
+            table.curser_row = table.rows.len()-1;
+        } else {
+            table.offset_row = table.rows.len()-self.table_heigh;
+            table.curser_row = self.table_heigh-1;
+        }
+        self.update_frame_data();
+    }
 
     fn move_selection_up(&mut self, size: usize) {
 
@@ -433,7 +459,6 @@ impl Model {
         if table.curser_row > 0 {
             // Curser somewhere in the middle
             table.curser_row = table.curser_row.saturating_sub(size);
-            self.update_frame_data();
         } else {
             // Curser at the top
             if table.offset_row > 0 {
@@ -453,7 +478,6 @@ impl Model {
             if table.curser_row < self.table_heigh-1 {
                 // Somewhere in the middle of the table
                 table.curser_row = std::cmp::min(table.curser_row + size, self.table_heigh-1);
-                self.update_frame_data();
             } else {
                 // At the bottom of the table, need to shift table down
                 table.offset_row = std::cmp::min(table.offset_row + size, table.rows.len()-1);
@@ -470,12 +494,9 @@ impl Model {
         let table = &mut self.tables[self.current_table];
         if table.curser_column > 0 {
             table.curser_column = table.curser_column.saturating_sub(1);
+        } else if table.offset_column > 0 {
+            table.offset_column = table.offset_column.saturating_sub(1);
             self.update_frame_data();
-        } else {
-            if table.offset_column > 0 {
-                table.offset_column = table.offset_column.saturating_sub(1);
-                self.update_frame_data();
-            }
         }
         //self.tables[self.current_table].selected_column = self.tables[self.current_table].selected_column.saturating_sub(1);
     }
@@ -484,9 +505,15 @@ impl Model {
         let table = &mut self.tables[self.current_table];
 
         if table.curser_column + table.offset_column < (self.data[table.data_idx].len()-1){
-            // TODO: this needs to be handled!
-            table.curser_column += 1;
-            self.update_frame_data();
+            // Somewhere before the last column
+            if table.curser_column < (table.visible_columns.len()-1) {
+                // In the middle
+                table.curser_column += 1;
+            } else {
+                // At the end of the screen
+                table.offset_column += 1;
+                self.update_frame_data();
+            }
         }
 
         //if self.selected_column < (self.ncols()-1){
