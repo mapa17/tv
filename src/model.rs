@@ -4,11 +4,11 @@ use std::fs;
 use std::io::ErrorKind;
 use std::time::Instant;
 use polars::prelude::*;
-use ratatui::symbols::line::VERTICAL_RIGHT;
-use tracing::{info, debug, error, warn, trace};
+use tracing::{info, debug, error};
 use rayon::prelude::*;
 
 use crate::domain::{TVError, Message, TVConfig};
+use crate::ui::TableUI;
 
 // A struct with different types
 #[derive(Debug)]
@@ -74,9 +74,12 @@ pub enum ColumnStatus {
 }
 
 pub struct TableView {
-    rows: Vec<usize>,
-    selected_row: usize,
-    selected_column: usize,
+    data_idx: usize, // Dataset index
+    rows: Vec<usize>, // Mapping of TableView row index to data index
+    curser_row: usize,
+    curser_column: usize,
+    offset_row: usize,
+    offset_column: usize,
 }
 
 //#[derive(Debug)]
@@ -85,14 +88,12 @@ pub struct Model {
     config: TVConfig,
     frame: LazyFrame,
     pub status: Status,
-    schema: Schema,
-    columns: Vec<Column>,
+    data: Vec<Vec<Column>>,
     tables: Vec<TableView>,
     current_table: usize,
     last_update: Instant,
     last_data_change: Instant,
     last_render: Instant,
-    selected_column: usize,
     table_width: usize,
     table_heigh: usize,
 }
@@ -105,7 +106,6 @@ impl Model {
             FileType::PARQUET => todo!(),
             FileType::XLSX => todo!(),
         };
-        let schema = frame.collect_schema()?.as_ref().clone();
 
         // Load dataframe using a different thread for each column
         // This is a very intensive operation as the data is pre-processed.
@@ -116,7 +116,7 @@ impl Model {
             .get_column_names()
             .par_iter()
             .enumerate()
-            .map(|(idx, name)| Self::process_column(&df, idx, name))
+            .map(|(idx, name)| Self::load_columns(&df, idx, name))
             .collect();
         let columns = c_?;
         let data_loading_duration = start_time.elapsed().as_millis();
@@ -125,25 +125,26 @@ impl Model {
             debug!("Column: {}", c.as_string());
         }
         let table = TableView {
+            data_idx: 0,
             rows: (0..columns[0].data.len()).collect(),
-            selected_column: 0,
-            selected_row: 0,
+            curser_column: 0,
+            curser_row: 0,
+            offset_column: 0,
+            offset_row: 0
         };
 
         Ok(
             Self {
-                file_info: file_info,
+                file_info,
                 config: config.clone(),
-                frame: frame,
+                frame,
                 status: Status::READY,
-                schema: schema,
-                columns: columns,
+                data: vec![columns],
                 tables: vec![table],
                 current_table: 0,
                 last_update: Instant::now() - std::time::Duration::from_secs(1),
                 last_render: Instant::now() - std::time::Duration::from_secs(1),
                 last_data_change: Instant::now(),
-                selected_column: 0,
                 table_heigh: 0,
                 table_width: 0,
             })
@@ -163,65 +164,53 @@ impl Model {
     }
 
     pub fn nrows(&self) -> usize {
-        let mut nrows = 0;
-        if !self.columns.is_empty() {
-            nrows = self.columns[0].data.len();
-        }
-        nrows
+        let table = &self.tables[self.current_table];
+        return table.rows.len();
     }
 
     pub fn ncols(&self) -> usize {
-        self.columns.len()
+        let table = &self.tables[self.current_table];
+        return self.data[table.data_idx].len();
     }
 
-    pub fn get_selected_row(&self) -> usize {
-        self.tables[self.current_table].selected_row
+    pub fn selected_row(&self) -> usize {
+        let table = &self.tables[self.current_table];
+        return table.curser_row;
     }
 
-    pub fn get_selected_column(&self) -> usize {
-        self.selected_column
+    pub fn selected_column(&self) -> usize {
+        let table = &self.tables[self.current_table];
+        return table.curser_column;
+    }
+
+    pub fn row_absolute(&self) -> usize {
+        let table = &self.tables[self.current_table];
+        return table.offset_row + table.curser_row;
+    }
+
+    pub fn column_absolute(&self) -> usize {
+        let table = &self.tables[self.current_table];
+        return table.offset_column + table.curser_column;
     }
 
     pub fn get_visible_columns<'a>(&'a self) -> Vec<ColumnView<'a>> {
 
         let table = &self.tables[self.current_table];
-        let rbegin = table.selected_row.saturating_sub(self.table_heigh);
+        let data = &self.data[table.data_idx];
+        //let rbegin = table.selected_row.saturating_sub(self.table_heigh);
+        let rbegin = table.offset_row;
         let rend = (rbegin + self.table_heigh).min(table.rows.len());
+        let selected_column = self.selected_column();
 
-        debug!("SR {}, SC {}, Rb {}, Re {}, th: {}, tw: {}", table.selected_row, self.selected_column, rbegin, rend, self.table_heigh, self.table_width);
-        // table.rows[rbegin..rend]
-        //     .iter()
-        //     .map(|&ridx| &column.data[ridx])
-        //     .collect()
- 
-
-        // Edge case
-        // Selected Column is too wide to render on the full table
-        /*
-        if self.columns[self.selected_column].render_width >= self.table_width {
-            let sel_col = &self.columns[self.selected_column];
-            let available_name_length = std::cmp::max(sel_col.name.len()+2, self.table_width);
-
-            if available_name_length < sel_col.name.len() {
-                let name = sel_col.name[0..(available_name_length-3)].to_string();
-                name += "...";
-            } else {
-                let name = sel_col.name;
-            }
-            visible_columns.push(ColumnView{
-                name: name,
-                width: available_name_length,
-                data: 
-            }) 
-        } */
+        debug!("Cr {}, Cc {}, Or {}, Oc {}, Rb {}, Re {}, th: {}, tw: {}", table.curser_row, table.curser_column, table.offset_row, table.offset_column, rbegin, rend, self.table_heigh, self.table_width);
 
         // Get the selected column and all possible ones to its left side.
         let mut columns_idx = Vec::new();
         let mut width_budget = self.table_width;
-        for cidx in (0..=self.selected_column).rev() {
-            if self.columns[cidx].render_width <= width_budget {
+        for cidx in (0..=selected_column).rev() {
+            if data[cidx].render_width <= width_budget {
                 columns_idx.push(cidx);
-                width_budget -= self.columns[cidx].render_width;
+                width_budget -= data[cidx].render_width;
             }
             else {
                 break;
@@ -230,10 +219,10 @@ impl Model {
 
         // If there is still space, fill it up with columns to the right
         if width_budget > 0 {
-            for cidx in self.selected_column+1..self.columns.len() {
-                if self.columns[cidx].render_width <= width_budget {
+            for cidx in selected_column+1..self.data.len() {
+                if data[cidx].render_width <= width_budget {
                     columns_idx.push(cidx);
-                    width_budget -= self.columns[cidx].render_width;
+                    width_budget -= data[cidx].render_width;
                 }
                 else {
                     break;
@@ -245,7 +234,7 @@ impl Model {
 
         let mut visible_columns = Vec::with_capacity(columns_idx.len());
         for &idx in &columns_idx {
-            if let Some(column) = self.columns.get(idx) {
+            if let Some(column) = data.get(idx) {
                 let col_data = table.rows[rbegin..rend]
                     .iter()
                     .map(|&ridx| &column.data[ridx])
@@ -256,8 +245,8 @@ impl Model {
 
                 visible_columns.push(
                     ColumnView{
-                        name: name,
-                        width: width,
+                        name,
+                        width,
                         data: col_data
                     }
                 );
@@ -266,7 +255,7 @@ impl Model {
             }
         }
   
-        return visible_columns;
+        visible_columns
     }
 
     fn get_visible_name(name: String, width: usize) -> String {
@@ -278,10 +267,10 @@ impl Model {
             reduced_name = reduced_name[0..width-3].to_string();
             reduced_name.push_str("...");
         }
-        return reduced_name;
+        reduced_name
     }
 
-    async fn load_columns(frame: &LazyFrame) -> Result<Vec<Column>, TVError> {
+    async fn load_frame(frame: &LazyFrame) -> Result<Vec<Column>, TVError> {
         // Collect once - shared cost
         let df = frame.clone().collect()?;
         let df = Arc::new(df);  // Share DataFrame across threads
@@ -293,7 +282,7 @@ impl Model {
             let col_name = col_name.to_string();
             
             let task = tokio::spawn(async move {
-                Self::process_column(&df_clone, idx, &col_name)
+                Self::load_columns(&df_clone, idx, &col_name)
             });
             tasks.push(task);
         }
@@ -309,7 +298,7 @@ impl Model {
         Ok(columns)
     }
 
-    fn process_column(df: &DataFrame, idx: usize, col_name: &str) -> Result<Column, PolarsError> {
+    fn load_columns(df: &DataFrame, idx: usize, col_name: &str) -> Result<Column, PolarsError> {
         let col = df.column(col_name)?.cast(&DataType::String)?;
         let series = col.str()?;
         let mut lengths = Vec::with_capacity(series.len());
@@ -338,10 +327,10 @@ impl Model {
             name: col_name.to_string(),
             status: ColumnStatus::NORMAL,
             width: q95_length,
-            width_max: width_max,
+            width_max,
             render_width: 0, // Will be set later
             histogram: counts,
-            data: data,
+            data,
         })
     }
 
@@ -394,8 +383,9 @@ impl Model {
 
         if self.last_data_change - self.last_update > std::time::Duration::ZERO {
             debug!("Underlying data has changed! Updating infos ...");
-            for column in self.columns.iter_mut() {
-                let render_width = Self::calculate_column_width(&column, self.config.default_column_width);
+            let table = &self.tables[self.current_table];
+            for column in self.data[table.data_idx].iter_mut() {
+                let render_width = Self::calculate_column_width(column, self.config.default_column_width);
                 column.render_width = render_width;
             }
         }
@@ -403,10 +393,10 @@ impl Model {
         if let Some(msg) = message {
             match msg {
                 Message::Quit => self.exit(),
-                Message::MoveDown => self.move_selection_down(),
+                Message::MoveDown => self.move_selection_down(1),
                 Message::MoveLeft => self.move_selection_left(),
                 Message::MoveRight => self.move_selection_right(),
-                Message::MoveUp => self.move_selection_up(),
+                Message::MoveUp => self.move_selection_up(1),
             }
         }
 
@@ -415,45 +405,60 @@ impl Model {
     }
 
 
-    fn move_selection_up(&mut self) {
-        self.tables[self.current_table].selected_row = self.tables[self.current_table].selected_row.saturating_sub(1);
+    fn move_selection_up(&mut self, size: usize) {
+
+        let table = &mut self.tables[self.current_table];
+        if table.curser_row > 0 {
+            // Curser somewhere in the middle
+            table.curser_row = table.curser_row.saturating_sub(size);
+        } else {
+            // Curser at the top
+            if table.offset_row > 0 {
+                // Shift table up
+                table.offset_row = table.offset_row.saturating_sub(size);
+            }
+        }
+        //self.tables[self.current_table].selected_row = self.tables[self.current_table].selected_row.saturating_sub(1);
     }
 
-    fn move_selection_down(&mut self) {
-        if self.tables[self.current_table].selected_row < self.tables[self.current_table].rows.len() {
-            self.tables[self.current_table].selected_row += 1;
-        }
+    fn move_selection_down(&mut self, size: usize) {
+
+        let table = &mut self.tables[self.current_table];
+        if table.curser_row + table.offset_row < (table.rows.len()-1) {
+            // Somewhere in the Frame
+            if table.curser_row < self.table_heigh-1 {
+                // Somewhere in the middle of the table
+                table.curser_row = std::cmp::min(table.curser_row + size, self.table_heigh-1);
+            } else {
+                // At the bottom of the table, need to shift table down
+                table.offset_row = std::cmp::min(table.offset_row + size, table.rows.len()-1);
+                table.curser_row = std::cmp::min(self.table_heigh-1, table.rows.len()-table.offset_row);
+            }
+        } 
+        //if self.tables[self.current_table].selected_row < self.tables[self.current_table].rows.len() {
+        //    self.tables[self.current_table].selected_row += 1;
+        //}
     }
 
     fn move_selection_left(&mut self) {
-        self.tables[self.current_table].selected_column = self.tables[self.current_table].selected_column.saturating_sub(1);
+        let table = &mut self.tables[self.current_table];
+        table.curser_column = table.curser_column.saturating_sub(1);
+
+        //self.tables[self.current_table].selected_column = self.tables[self.current_table].selected_column.saturating_sub(1);
     }
 
     fn move_selection_right(&mut self) {
-        if self.selected_column < (self.ncols()-1){
-            self.selected_column += 1;
+        let table = &mut self.tables[self.current_table];
+
+        if table.curser_column + table.offset_column < (self.data[table.data_idx].len()-1){
+            // TODO: this needs to be handled!
+            table.curser_column += 1;
         }
+
+        //if self.selected_column < (self.ncols()-1){
+        //    self.selected_column += 1;
+        //}
     }
 
-    // pub fn get_headers(&self) -> impl Iterator<Item = &str> + '_ {
-    //     self.schema.iter_names().map(|s| s.as_str())
-    // }
 
-    // pub fn get_column_data(&self, column_idx: usize, row_idxs: Vec<usize>) -> Result<Vec<&String>, TVError> {
-    //     let column = self.columns.get(column_idx).ok_or(TVError::DataIndexingError("Column index out of bounds".into()))?;
-    
-    //     if row_idxs.is_empty() {
-    //         // Return all rows
-    //         Ok(column.data.iter().collect())
-    //     } else {
-    //         let mut result = Vec::with_capacity(row_idxs.len());
-    //         for idx in row_idxs {
-    //             let value = column.data
-    //                 .get(idx)
-    //                 .ok_or_else(|| TVError::DataIndexingError(format!("Row {} not found", idx)))?;
-    //             result.push(value);
-    //         }
-    //         Ok(result)
-    //     }
-    // }
 }

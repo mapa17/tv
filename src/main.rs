@@ -55,20 +55,19 @@ fn run() -> Result<(), TVError> {
     };
  
     initialize_logging(&cfg)?;
-    
     info!("Starting tv!");
-    //let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
-    let mut model = Model::from_file("tests/fixtures/testdata_02.csv".into(), &cfg)?; 
+
+     //let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
+    let mut model = Model::from_file("tests/fixtures/testdata_01.csv".into(), &cfg)?; 
     
-    let mut ui = TableUI::new(&cfg, &model);
-
     let controller = Controller::new(&cfg);
-
     let mut terminal = ratatui::init();
-
+    let mut ui = TableUI::new(&cfg, &terminal.get_frame());
+   
     while model.status != Status::EXITING {
-        // Handle events and map to a Message
         let tsize = ui.get_table_size();
+
+        // Handle events and map to a Message
         let message = controller.handle_event(&model)?; 
         model.update(message, tsize.0, tsize.1)?;
 

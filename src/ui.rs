@@ -1,10 +1,12 @@
+use std::rc::Rc;
+
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell};
-use ratatui::{Frame, layout::Rect};
-use tracing::{info, warn, debug, trace};
+use ratatui::{Frame, layout::Rect, Terminal};
+use tracing::{warn, trace};
 
-use crate::domain::{TVError, TVConfig};
+use crate::domain::TVConfig;
 use crate::model::Model;
 
 #[derive(Clone)]
@@ -89,20 +91,24 @@ const PALETTES: [tailwind::Palette; 4] = [
 ];
 
 impl TableUI {
-    pub fn new(_config: &TVConfig, model: &Model) -> Self {
+    pub fn new(_config: &TVConfig, frame: &Frame) -> Self {
         let colors = UIColors::new(&PALETTES[0]);
         let styles = UIStyles::new(&colors);
-        //let headers = Self::get_headers(model).unwrap_or_default();
-        Self {
+
+        let mut s = Self {
             colors,
             styles,
             table_state: TableState::default(),
             scrollbar_state: ScrollbarState::new(1).position(0),
             table_width: 0,
             table_heigh: 0,
-            //headers,
-            //visible_headers: Vec::new(),
-        }
+        };
+
+        // Update table width as this is used by TVModel to calculate column widths
+        let rects = Self::create_layout(frame);
+        s.table_width = rects[0].width as usize;
+        s.table_heigh = rects[0].height as usize;
+        return s;
     }
 
     // fn get_headers(model: &Model) -> Result<Vec<HeaderElement>, TVError> {
@@ -117,10 +123,14 @@ impl TableUI {
     //     Ok(headers)
     // }
 
+    fn create_layout(frame: &Frame) -> Rc<[Rect]> {
+        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
+        vertical.split(frame.area())
+    }
+
     pub fn draw(&mut self, model: &Model, frame: &mut Frame) {
         //trace!("Drawing ui ...");
-        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
-        let rects = vertical.split(frame.area());
+        let rects = Self::create_layout(frame);
 
         // Update table width as this is used by TVModel to calculate column widths
         self.table_width = rects[0].width as usize;
@@ -219,11 +229,11 @@ impl TableUI {
             .highlight_symbol(">>");
         //self.table_state.select_column(Some(model.get_selected_column()));
         //self.table_state.select(Some(model.get_selected_row()));
-        self.table_state.select_cell(Some((model.get_selected_row(), model.get_selected_column())));
+        self.table_state.select_cell(Some((model.selected_row(), model.selected_column())));
         frame.render_stateful_widget(table, area, &mut self.table_state);
 
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-        self.scrollbar_state = self.scrollbar_state.content_length(model.nrows()).position(model.get_selected_row()); //.viewport_content_length(1);
+        self.scrollbar_state = self.scrollbar_state.content_length(model.nrows()).position(model.selected_row()); //.viewport_content_length(1);
         frame.render_stateful_widget(scrollbar, area, &mut self.scrollbar_state);
     }
 
