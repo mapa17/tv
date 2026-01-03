@@ -3,7 +3,7 @@ use std::rc::Rc;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell};
-use ratatui::{Frame, layout::Rect, Terminal};
+use ratatui::{Frame, layout::Rect};
 use tracing::{warn, trace};
 
 use crate::domain::TVConfig;
@@ -108,7 +108,7 @@ impl TableUI {
         let rects = Self::create_layout(frame);
         s.table_width = rects[0].width as usize;
         s.table_heigh = rects[0].height as usize;
-        return s;
+        s
     }
 
     // fn get_headers(model: &Model) -> Result<Vec<HeaderElement>, TVError> {

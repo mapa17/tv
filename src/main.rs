@@ -58,7 +58,7 @@ fn run() -> Result<(), TVError> {
     info!("Starting tv!");
 
      //let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
-    let mut model = Model::from_file("tests/fixtures/testdata_01.csv".into(), &cfg)?; 
+    let mut model = Model::from_file("tests/fixtures/testdata_02.csv".into(), &cfg)?; 
     
     let controller = Controller::new(&cfg);
     let mut terminal = ratatui::init();

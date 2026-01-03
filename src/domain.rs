@@ -37,9 +37,6 @@ pub struct TVConfig {
 
 #[derive(PartialEq, Debug)]
 pub enum Message {
-    // Increment,
-    // Decrement,
-    // Reset,
     MoveUp,
     MoveDown,
     MoveLeft,
