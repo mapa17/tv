@@ -47,6 +47,7 @@ pub enum Message {
     MoveBeginning,
     ShrinkColumn,
     GrowColumn,
+    ToggleIndex,
     Quit,
 }
 

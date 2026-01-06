@@ -81,20 +81,20 @@ pub struct TableView {
     offset_row: usize,
     offset_column: usize,
     data: Vec<ColumnView>,
+    show_index: bool,
 }
 
 //#[derive(Debug)]
 pub struct Model {
     file_info: FileInfo,
     config: TVConfig,
-    frame: LazyFrame,
     pub status: Status,
     data: Vec<Vec<Column>>,
     tables: Vec<TableView>,
     current_table: usize,
     last_update: Instant,
     last_data_change: Instant,
-    last_render: Instant,
+    last_render_update: Instant,
     table_width: usize,
     table_heigh: usize,
 }
@@ -134,19 +134,19 @@ impl Model {
             offset_column: 0,
             offset_row: 0,
             data: Vec::new(),
+            show_index: true,
         };
 
         Ok(
             Self {
                 file_info,
                 config: config.clone(),
-                frame,
                 status: Status::READY,
                 data: vec![columns],
                 tables: vec![table],
                 current_table: 0,
                 last_update: Instant::now() - std::time::Duration::from_secs(1),
-                last_render: Instant::now() - std::time::Duration::from_secs(1),
+                last_render_update: Instant::now() - std::time::Duration::from_secs(1),
                 last_data_change: Instant::now(),
                 table_heigh: 0,
                 table_width: 0,
@@ -203,33 +203,71 @@ impl Model {
     }
 
     fn get_collapsed_column(nrows: usize) -> ColumnView {
-        let data = vec!("⋮".repeat(nrows).to_string());
-        ColumnView { name: "...".to_string(), width: 3, data: data }
+        let data = vec!("⋮".to_string(); nrows);
+        ColumnView { name: "...".to_string(), width: 3, data }
+    }
+
+
+    pub fn show_index_column(&self) -> bool {
+        let table = &self.tables[self.current_table];
+        return table.show_index;
+    }
+
+    pub fn get_index_column(&self) -> Option<ColumnView> {
+        let table = &self.tables[self.current_table];
+        if table.show_index {
+            let rbegin = table.offset_row;
+            let rend = std::cmp::min(rbegin + self.table_heigh, table.rows.len());
+
+            let data = (rbegin+1..rend+1).map(|idx| idx.to_string()).collect::<Vec<String>>();
+            let width = data.last().map(|s| s.len()).unwrap_or(3);
+            return Some(ColumnView { name: "".to_string(), width: width, data});
+        } else {
+            return None;
+        }
+    }
+
+    fn update_rendering(&mut self) {
+        self.last_render_update = Instant::now();
+    }
+
+    pub fn get_last_render_update(&self) -> Instant {
+        self.last_render_update
     }
 
     fn update_frame_data(&mut self) {
         let table = &mut self.tables[self.current_table];
-        let columns = &self.data[table.data_idx];
-        //let rbegin = table.selected_row.saturating_sub(self.table_heigh);
+        let columns = &mut self.data[table.data_idx];
         let rbegin = table.offset_row;
-        //let rend = (rbegin + self.table_heigh).min(table.rows.len());
         let rend = std::cmp::min(rbegin + self.table_heigh, table.rows.len());
 
         trace!("Cr {}, Cc {}, Or {}, Oc {}, Rb {}, Re {}, th: {}, tw: {}", table.curser_row, table.curser_column, table.offset_row, table.offset_column, rbegin, rend, self.table_heigh, self.table_width);
 
         table.visible_columns = Vec::new();
         let mut width_budget = self.table_width;
-        for cidx in table.offset_column..columns.len() {
-            if (columns[cidx].render_width+1) <= width_budget {
-                table.visible_columns.push(cidx);
-                width_budget -= columns[cidx].render_width + 1; // Rendered with and 1 spacer character
+
+        // Calculate current render with for each column
+        for column in columns.iter_mut() {
+            column.render_width = Self::calculate_column_width(column, self.config.default_column_width);
+        }
+
+        // Create a list of columns that fit in the table 
+        for (cidx, column) in columns[table.offset_column..].iter_mut().enumerate() {
+            if (column.render_width+1) <= width_budget {
+                table.visible_columns.push(cidx+table.offset_column);
+                width_budget -= column.render_width + 1; // Rendered with and 1 spacer character
             }
             else {
+                table.visible_columns.push(cidx+table.offset_column);
                 break;
             }
         }
 
+        // Growing columns can reduce the number of visible columns. Make sure the column curser is at most the last visible column
+        table.curser_column = std::cmp::min(table.curser_column, table.visible_columns.len()-1);
+
         // Create ColumnViews for visible columns
+
         table.data.clear();
         table.data = Vec::with_capacity(table.visible_columns.len());
         for idx in table.visible_columns.iter() {
@@ -257,6 +295,8 @@ impl Model {
                 error!("Trying to access column with unknown idx {idx}!");
             }
         }
+
+        self.update_rendering();
     }
 
     fn get_visible_name(name: String, width: usize) -> String {
@@ -405,6 +445,7 @@ impl Model {
                 Message::MoveEnd => self.move_selection_end(),
                 Message::GrowColumn => self.grow_selected_column(),
                 Message::ShrinkColumn => self.shrink_selected_column(),
+                Message::ToggleIndex => self.toggle_index(),
             }
         }
 
@@ -412,6 +453,15 @@ impl Model {
         Ok(())
     }
 
+
+    // -------------------- Control handling functions ---------------------- //
+
+    fn toggle_index(&mut self) {
+        let table = &mut self.tables[self.current_table];
+        table.show_index = !table.show_index;
+        self.update_frame_data();
+    }
+ 
     fn grow_selected_column(&mut self) {
         let table = &mut self.tables[self.current_table];
         let new_status = match self.data[table.data_idx][table.visible_columns[table.curser_column]].status {
@@ -467,7 +517,7 @@ impl Model {
                 self.update_frame_data();
             }
         }
-        //self.tables[self.current_table].selected_row = self.tables[self.current_table].selected_row.saturating_sub(1);
+        self.update_rendering();
     }
 
     fn move_selection_down(&mut self, size: usize) {
@@ -484,10 +534,8 @@ impl Model {
                 table.curser_row = std::cmp::min(self.table_heigh-1, table.rows.len()-table.offset_row);
                 self.update_frame_data();
             }
+            self.update_rendering();
         } 
-        //if self.tables[self.current_table].selected_row < self.tables[self.current_table].rows.len() {
-        //    self.tables[self.current_table].selected_row += 1;
-        //}
     }
 
     fn move_selection_left(&mut self) {
@@ -498,7 +546,7 @@ impl Model {
             table.offset_column = table.offset_column.saturating_sub(1);
             self.update_frame_data();
         }
-        //self.tables[self.current_table].selected_column = self.tables[self.current_table].selected_column.saturating_sub(1);
+        self.update_rendering();
     }
 
     fn move_selection_right(&mut self) {
@@ -514,11 +562,8 @@ impl Model {
                 table.offset_column += 1;
                 self.update_frame_data();
             }
+            self.update_rendering();
         }
-
-        //if self.selected_column < (self.ncols()-1){
-        //    self.selected_column += 1;
-        //}
     }
 
 

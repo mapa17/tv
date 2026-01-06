@@ -4,10 +4,11 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell};
 use ratatui::{Frame, layout::Rect};
-use tracing::{warn, trace};
+use tracing::{warn, info, debug, trace};
+use std::time::{Duration, Instant};
 
 use crate::domain::TVConfig;
-use crate::model::Model;
+use crate::model::{ColumnView, Model};
 
 #[derive(Clone)]
 struct UIColors {
@@ -79,8 +80,15 @@ pub struct TableUI {
     scrollbar_state: ScrollbarState,
     table_width: usize,
     table_heigh: usize,
+    last_render: Instant,
     //headers: Vec<HeaderElement>,
     //visible_headers: Vec<usize>,
+}
+
+struct TableUILayout {
+    table: Rect,
+    cmd: Rect,
+    index: Option<Rect>,
 }
 
 const PALETTES: [tailwind::Palette; 4] = [
@@ -102,47 +110,72 @@ impl TableUI {
             scrollbar_state: ScrollbarState::new(1).position(0),
             table_width: 0,
             table_heigh: 0,
+            last_render: Instant::now() - std::time::Duration::from_secs(1),
         };
 
         // Update table width as this is used by TVModel to calculate column widths
-        let rects = Self::create_layout(frame);
-        ui.table_width = rects[0].width as usize;
-        ui.table_heigh = rects[0].height as usize;
+        let layout = Self::create_layout(frame, false, 0);
+        ui.table_width = layout.table.width as usize;
+        ui.table_heigh = layout.table.height as usize;
         ui
     }
 
-    // fn get_headers(model: &Model) -> Result<Vec<HeaderElement>, TVError> {
-    //     let mut column_infos = Vec::with_capacity(model.ncols());
-    //     for idx in 0..model.ncols() {
-    //         column_infos.push(model.get_column_info(idx)?);
-    //     }
-    //     let mut headers = Vec::with_capacity(column_infos.len());
-    //     for ci in column_infos {
-    //         headers.push(HeaderElement{idx: ci.idx, name: ci.name, width: 20, max_width: ci.width, collapsed: false});
-    //     }
-    //     Ok(headers)
-    // }
-
-    fn create_layout(frame: &Frame) -> Rc<[Rect]> {
-        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
-        vertical.split(frame.area())
+    fn create_layout(frame: &Frame, show_index: bool, index_width: usize) -> TableUILayout {
+        let vertical = &Layout::vertical([Constraint::Percentage(100), Constraint::Length(4)]);
+        let vsplit = vertical.split(frame.area());
+        if show_index {
+            let horizontal = &Layout::horizontal([Constraint::Length(index_width as u16 + 2), Constraint::Percentage(100)]);
+            let hsplit = horizontal.split(vsplit[0]);
+            return TableUILayout {
+                table: hsplit[1],
+                cmd: vsplit[1],
+                index: Some(hsplit[0]),
+            };
+ 
+        } else {
+            return TableUILayout {
+                table: vsplit[0],
+                cmd: vsplit[1],
+                index: None,
+            };
+        }
     }
 
     pub fn draw(&mut self, model: &Model, frame: &mut Frame) {
+
         //trace!("Drawing ui ...");
-        let rects = Self::create_layout(frame);
+        if let Some(index_column) = model.get_index_column() {
+            let layout = Self::create_layout(frame, true, index_column.width);
+            self.render_table(model, frame, layout.table);
+            self.render_index(index_column, frame, layout.index.unwrap());
+            self.render_cmdline(model, frame, layout.cmd);
+       } else {
+            let layout = Self::create_layout(frame, false, 0);
+            self.render_table(model, frame, layout.table);
+            self.render_cmdline(model, frame, layout.cmd);
+       }
 
-        // Update table width as this is used by TVModel to calculate column widths
-        self.table_width = rects[0].width as usize;
-        self.table_heigh = rects[0].height as usize;
+       self.last_render = Instant::now();
+    }
 
-        self.render_table(model, frame, rects[0]);
-
-        self.render_cmdline(model, frame, rects[1]);
+    pub fn needs_redrawing(&self, model: &Model) -> bool {
+        model.get_last_render_update() - self.last_render > std::time::Duration::ZERO
     }
 
     pub fn get_table_size(&self) -> (usize, usize) {
-        (self.table_width-2, self.table_heigh-3) // Subtract Column border and header size
+        (self.table_width-2, self.table_heigh-1) // Subtract Column border and header size
+    }
+    
+    fn render_index(&mut self, column: ColumnView, frame: &mut Frame, area: Rect) {
+        let rows = column.data.into_iter().map(|row| Row::new(vec![row]).style(self.styles.row)).collect::<Vec<Row>>();
+        let width = vec![Constraint::Length(column.width as u16)];
+
+        let header = Row::new(vec![column.name.clone()])
+            .style(self.styles.header);
+
+        let table = Table::new(rows, width).header(header)
+            .block(Block::default().borders(Borders::RIGHT).style(self.styles.row));
+        frame.render_widget(table, area);
     }
 
     fn render_table(&mut self, model: &Model, frame: &mut Frame, area: Rect) {
@@ -202,9 +235,12 @@ impl TableUI {
 
         //let headers = model.get_headers().collect();
 
+       // Update table width as this is used by TVModel to calculate column widths
+        self.table_width = area.width as usize;
+        self.table_heigh = area.height as usize;
 
-        let h = area.height;
-        let w = area.width;
+        let _h = area.height;
+        let _w = area.width;
         //trace!("Table size: w:{w} h:{h}");
         let columns = model.get_visible_columns(); 
         if columns.is_empty() {
@@ -220,22 +256,23 @@ impl TableUI {
 
         let header = Row::new(columns.iter().map(|c| Cell::from(c.name.clone())).collect::<Vec<Cell>>())
             .style(self.styles.header);
+        
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+        self.scrollbar_state = self.scrollbar_state.content_length(model.nrows()).position(model.row_absolute()); //.viewport_content_length(1);
+        frame.render_stateful_widget(scrollbar, area, &mut self.scrollbar_state);
 
         let table = Table::new(rows, widths)
-            .block(Block::new().title("Table"))
+            //.block(Block::new().title("Table"))
             .row_highlight_style(self.styles.selected_row)
             .cell_highlight_style(self.styles.selected_cell)
-            .header(header)
-            .highlight_symbol(">>");
+            .header(header);
+            //.highlight_symbol(">>");
         //self.table_state.select_column(Some(model.get_selected_column()));
         //self.table_state.select(Some(model.get_selected_row()));
         self.table_state.select_cell(Some((model.selected_row(), model.selected_column())));
         frame.render_stateful_widget(table, area, &mut self.table_state);
 
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-        self.scrollbar_state = self.scrollbar_state.content_length(model.nrows()).position(model.row_absolute()); //.viewport_content_length(1);
-        frame.render_stateful_widget(scrollbar, area, &mut self.scrollbar_state);
-    }
+        }
 
     fn render_cmdline(&mut self, _model: &Model, frame: &mut Frame, area: Rect) {
         let b = Block::default().title("Cmd").borders(Borders::ALL);

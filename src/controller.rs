@@ -37,7 +37,8 @@ impl Controller {
             (KeyCode::Char('G'), KeyModifiers::SHIFT) => Some(Message::MoveEnd),
             (KeyCode::Char('g'), KeyModifiers::NONE) => Some(Message::MoveBeginning),
             (KeyCode::Char('-'), KeyModifiers::NONE) => Some(Message::ShrinkColumn),
-            (KeyCode::Char('+'), KeyModifiers::SHIFT) => Some(Message::GrowColumn),
+            (KeyCode::Char('+'), KeyModifiers::NONE) => Some(Message::GrowColumn),
+            (KeyCode::Char('n'), KeyModifiers::NONE) => Some(Message::ToggleIndex),
             _ => None,
         };
         trace!("Mapped: {key:?} => {message:?}");

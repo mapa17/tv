@@ -58,7 +58,7 @@ fn run() -> Result<(), TVError> {
     info!("Starting tv!");
 
      //let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
-    let mut model = Model::from_file("tests/fixtures/testdata_02.csv".into(), &cfg)?; 
+    let mut model = Model::from_file("tests/fixtures/testdata_03.csv".into(), &cfg)?; 
     
     let controller = Controller::new(&cfg);
     let mut terminal = ratatui::init();
@@ -71,8 +71,10 @@ fn run() -> Result<(), TVError> {
         let message = controller.handle_event(&model)?; 
         model.update(message, tsize.0, tsize.1)?;
 
-        // Render the current view
-        terminal.draw(|f| ui.draw(&model, f))?;
+        if ui.needs_redrawing(&model) {
+            // Render the current view
+            terminal.draw(|f| ui.draw(&model, f))?;
+        }
     };
 
     Ok(())
