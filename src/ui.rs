@@ -1,11 +1,10 @@
-use std::rc::Rc;
 
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell};
 use ratatui::{Frame, layout::Rect};
-use tracing::{warn, info, debug, trace};
-use std::time::{Duration, Instant};
+use tracing::warn;
+use std::time::Instant;
 
 use crate::domain::TVConfig;
 use crate::model::{ColumnView, Model};
@@ -126,18 +125,18 @@ impl TableUI {
         if show_index {
             let horizontal = &Layout::horizontal([Constraint::Length(index_width as u16 + 2), Constraint::Percentage(100)]);
             let hsplit = horizontal.split(vsplit[0]);
-            return TableUILayout {
+            TableUILayout {
                 table: hsplit[1],
                 cmd: vsplit[1],
                 index: Some(hsplit[0]),
-            };
+            }
  
         } else {
-            return TableUILayout {
+            TableUILayout {
                 table: vsplit[0],
                 cmd: vsplit[1],
                 index: None,
-            };
+            }
         }
     }
 

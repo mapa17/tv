@@ -210,7 +210,7 @@ impl Model {
 
     pub fn show_index_column(&self) -> bool {
         let table = &self.tables[self.current_table];
-        return table.show_index;
+        table.show_index
     }
 
     pub fn get_index_column(&self) -> Option<ColumnView> {
@@ -221,9 +221,9 @@ impl Model {
 
             let data = (rbegin+1..rend+1).map(|idx| idx.to_string()).collect::<Vec<String>>();
             let width = data.last().map(|s| s.len()).unwrap_or(3);
-            return Some(ColumnView { name: "".to_string(), width: width, data});
+            Some(ColumnView { name: "".to_string(), width, data})
         } else {
-            return None;
+            None
         }
     }
 

@@ -4,3 +4,4 @@
 [x] When jumping to the last column, make sure it can be rendered fully.
 [ ] Show curser position ... somewhere
 [ ] BUG: Fix the table width to decrease when omitting index column.
+[x] Add minimal argument parsing that supports providing a filename.
