@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use tracing_subscriber::{self, EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_error::ErrorLayer;
 use tracing::info;
+use clap::{Parser};
 
 mod model;
 mod ui;
@@ -11,7 +12,7 @@ mod domain;
 mod controller;
 
 
-use domain::{TVConfig, TVError};
+use domain::{TVConfig, TVError, Message};
 use model::{Model, Status};
 use ui::TableUI;
 use controller::Controller;
@@ -30,7 +31,7 @@ fn main() -> ExitCode {
 }
 
 pub fn initialize_logging(_cfg: &TVConfig, args: &TVArguments) -> Result<(), std::io::Error> {
-    let log_path = PathBuf::from(args.log.clone());
+    let log_path = args.log.clone();
     let log_file = std::fs::File::create(log_path)?;
     let log_level = match args.verbose {
         0 => "warning", 
@@ -54,7 +55,6 @@ pub fn initialize_logging(_cfg: &TVConfig, args: &TVArguments) -> Result<(), std
     Ok(())
 }
 
-use clap::{Parser};
 
 #[derive(Parser)]
 #[command(name = "TV")]
@@ -100,23 +100,27 @@ fn run() -> Result<(), TVError> {
     info!("Starting tv!");
 
      //let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
-    let mut model = Model::from_file(args.filepath.into(), &cfg)?; 
+    let mut model = Model::from_file(args.filepath, &cfg)?; 
     
     let controller = Controller::new(&cfg);
     let mut terminal = ratatui::init();
-    let mut ui = TableUI::new(&cfg, &terminal.get_frame());
-   
+    let mut ui = TableUI::new(&cfg);
+
+    // Start by telling the model about the actual ui size
+    let area = terminal.get_frame().area();
+    let mut message= Some(Message::Resize(area.width as usize, area.height as usize)); 
+
     while model.status != Status::EXITING {
-        let tsize = ui.get_table_size();
-
         // Handle events and map to a Message
-        let message = controller.handle_event(&model)?; 
-        model.update(message, tsize.0, tsize.1)?;
+        model.update(message)?;
 
-        if ui.needs_redrawing(&model) {
+        let uidata = model.get_uidata();
+        if ui.needs_redrawing(uidata) {
             // Render the current view
-            terminal.draw(|f| ui.draw(&model, f))?;
+            terminal.draw(|f| ui.draw(uidata, f))?;
         }
+
+        message = controller.handle_event(&model)?; 
     };
 
     Ok(())

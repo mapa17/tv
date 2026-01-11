@@ -48,6 +48,7 @@ pub enum Message {
     ShrinkColumn,
     GrowColumn,
     ToggleIndex,
+    Resize(usize, usize,),
     Quit,
 }
 

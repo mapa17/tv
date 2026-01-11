@@ -17,11 +17,19 @@ impl Controller {
     }
 
     pub fn handle_event(&self, _model: &Model) -> Result<Option<Message>, TVError> {
-        if event::poll(Duration::from_millis(self.event_poll_time as u64))?
-            && let Event::Key(key) = event::read()?
-                && key.kind == event::KeyEventKind::Press {
+        if event::poll(Duration::from_millis(self.event_poll_time as u64))? {
+            match event::read()? {
+                // Detect frame resize event
+                event::Event::Resize(width, height) => {
+                    trace!("Resized to {}x{}", width, height);
+                    return Ok(Some(Message::Resize(width as usize, height as usize))); 
+                }
+                event::Event::Key(key) if key.kind == event::KeyEventKind::Press => {
                     return Ok(self.handle_key(key));
                 }
+                _ => {}
+            }
+        }
         Ok(None)
     }
 

@@ -6,8 +6,11 @@ use std::time::Instant;
 use polars::prelude::*;
 use tracing::{info, debug, error, trace};
 use rayon::prelude::*;
+use tracing_subscriber::fmt::TestWriter;
 
 use crate::domain::{TVError, Message, TVConfig};
+use crate::ui::{TableUI, SCROLLBAR_WIDTH, INDEX_COLUMN_BORDER, TABLE_HEADER_HEIGHT};
+
 
 // A struct with different types
 #[derive(Debug)]
@@ -59,10 +62,21 @@ impl Column {
     }
 }
 
+#[derive(Clone)]
 pub struct ColumnView {
     pub name: String,
     pub width: usize,
     pub data: Vec<String>,
+}
+
+impl ColumnView {
+    fn empty() -> Self {
+        ColumnView { 
+            name: "".to_string(), 
+            width: 0, 
+            data: Vec::new(), 
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -82,6 +96,104 @@ pub struct TableView {
     offset_column: usize,
     data: Vec<ColumnView>,
     show_index: bool,
+    index: ColumnView,
+    heigh: usize,
+    width: usize,
+}
+
+impl TableView {
+    fn empty() -> Self {
+        TableView {
+            data_idx: 0,
+            rows: Vec::new(),
+            visible_columns: Vec::new(),
+            curser_column: 0,
+            curser_row: 0,
+            offset_column: 0,
+            offset_row: 0,
+            data: Vec::new(),
+            show_index: false,
+            index: ColumnView::empty(),
+            heigh: 0,
+            width: 0,
+        }
+    }
+
+    fn build_index(&mut self) {
+        let rbegin = self.offset_row;
+        let rend = std::cmp::min(rbegin + self.heigh, self.rows.len());
+
+        let data = (rbegin+1..rend+1).map(|idx| idx.to_string()).collect::<Vec<String>>();
+        let width = data.last().map(|s| s.len()).unwrap_or(3);
+        self.index = ColumnView { name: "".to_string(), width, data} 
+    }
+}
+
+pub struct UIData {
+    pub table: Vec<ColumnView>,
+    pub index: ColumnView,
+    pub nrows: usize,
+    pub selected_row: usize,
+    pub selected_column: usize,
+    pub abs_selected_row: usize,
+    pub layout: UILayout,
+    pub last_update: Instant,
+}
+
+impl UIData {
+    pub fn empty() -> Self {
+        UIData {
+            table: Vec::new(),
+            index: ColumnView { name: "".to_string(), width: 0, data: Vec::new() },
+            nrows: 0,
+            selected_row: 0,
+            selected_column: 0,
+            abs_selected_row: 0, 
+            layout: UILayout::default(),
+            last_update: Instant::now(),
+        }
+    }
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct UILayout {
+    pub width: usize,
+    pub height: usize,
+    pub table_width: usize,
+    pub table_height: usize,
+    pub index_width: usize,
+    pub index_height: usize,
+    pub cmdline_width: usize,
+    pub cmdline_height: usize,
+}
+
+impl UILayout {
+    pub fn from_model(model: &Model, ui_width: usize, ui_height: usize) -> Self {
+        let table = &model.tables[model.current_table];
+        let mut index_width = 0;
+        if table.show_index {
+            index_width = table.index.width;
+        } 
+        let cmdline_heigth = 4;
+        let cmdline_width= ui_width;
+       
+        let table_width = ui_width - SCROLLBAR_WIDTH - index_width;
+        let table_height = ui_height - cmdline_heigth - TABLE_HEADER_HEIGHT; 
+        let index_height = table_height;
+
+        let layout = UILayout {
+            width: ui_width,
+            height: ui_height,
+            table_width: table_width,
+            table_height: table_height,
+            index_width: index_width,
+            index_height: index_height,
+            cmdline_width: cmdline_width,
+            cmdline_height: cmdline_heigth,
+        };
+        trace!("Build UILayout: {:?}", layout);
+        return layout;
+    }
 }
 
 //#[derive(Debug)]
@@ -94,9 +206,8 @@ pub struct Model {
     current_table: usize,
     last_update: Instant,
     last_data_change: Instant,
-    last_render_update: Instant,
-    table_width: usize,
-    table_heigh: usize,
+    uilayout: UILayout,
+    uidata: UIData,
 }
 
 impl Model {
@@ -125,17 +236,10 @@ impl Model {
         for c in columns.iter() {
             debug!("Column: {}", c.as_string());
         }
-        let table = TableView {
-            data_idx: 0,
-            rows: (0..columns[0].data.len()).collect(),
-            visible_columns: Vec::new(),
-            curser_column: 0,
-            curser_row: 0,
-            offset_column: 0,
-            offset_row: 0,
-            data: Vec::new(),
-            show_index: true,
-        };
+        let ui_size = UILayout::default();
+        let mut table = TableView::empty();
+        // set default row mapping
+        table.rows = (0..columns[0].data.len()).collect();
 
         Ok(
             Self {
@@ -146,11 +250,30 @@ impl Model {
                 tables: vec![table],
                 current_table: 0,
                 last_update: Instant::now() - std::time::Duration::from_secs(1),
-                last_render_update: Instant::now() - std::time::Duration::from_secs(1),
                 last_data_change: Instant::now(),
-                table_heigh: 0,
-                table_width: 0,
+                uilayout: ui_size,
+                uidata: UIData::empty(), // TODO: find out how to do this better. How can i in a factory function create an object that relies on self to exit?
             })
+    }
+
+    fn update_uidata(&mut self) {
+        trace!("Updating uidata!");
+        let table = &mut self.tables[self.current_table];
+
+        self.uidata = UIData {
+            table: table.data.clone(),
+            index: table.index.clone(), 
+            nrows: table.rows.len(),
+            selected_row: table.curser_row,
+            selected_column: table.curser_column,
+            abs_selected_row: table.offset_row + table.curser_row,
+            layout: self.uilayout.clone(),
+            last_update: Instant::now(),
+        }
+    }
+
+    fn get_current_table(&self) -> &TableView {
+        &self.tables[self.current_table]
     }
 
     fn detect_file_type(path: &Path) -> Result<FileType, TVError> {
@@ -166,40 +289,9 @@ impl Model {
         }
     }
 
-    pub fn nrows(&self) -> usize {
-        let table = &self.tables[self.current_table];
-        table.rows.len()
-    }
 
-    pub fn ncols(&self) -> usize {
-        let table = &self.tables[self.current_table];
-        self.data[table.data_idx].len()
-    }
-
-    pub fn selected_row(&self) -> usize {
-        let table = &self.tables[self.current_table];
-        table.curser_row
-    }
-
-    pub fn selected_column(&self) -> usize {
-        let table = &self.tables[self.current_table];
-        table.curser_column
-    }
-
-    pub fn row_absolute(&self) -> usize {
-        let table = &self.tables[self.current_table];
-        table.offset_row + table.curser_row
-    }
-
-    pub fn column_absolute(&self) -> usize {
-        let table = &self.tables[self.current_table];
-        table.offset_column + table.curser_column
-    }
-
-    pub fn get_visible_columns(&self) -> &Vec<ColumnView> {
-
-        let table = &self.tables[self.current_table];
-        &table.data
+    pub fn get_uidata(&self) -> &UIData {
+        &self.uidata
     }
 
     fn get_collapsed_column(nrows: usize) -> ColumnView {
@@ -208,43 +300,22 @@ impl Model {
     }
 
 
-    pub fn show_index_column(&self) -> bool {
-        let table = &self.tables[self.current_table];
-        table.show_index
-    }
-
-    pub fn get_index_column(&self) -> Option<ColumnView> {
-        let table = &self.tables[self.current_table];
-        if table.show_index {
-            let rbegin = table.offset_row;
-            let rend = std::cmp::min(rbegin + self.table_heigh, table.rows.len());
-
-            let data = (rbegin+1..rend+1).map(|idx| idx.to_string()).collect::<Vec<String>>();
-            let width = data.last().map(|s| s.len()).unwrap_or(3);
-            Some(ColumnView { name: "".to_string(), width, data})
-        } else {
-            None
-        }
-    }
-
-    fn update_rendering(&mut self) {
-        self.last_render_update = Instant::now();
-    }
-
-    pub fn get_last_render_update(&self) -> Instant {
-        self.last_render_update
-    }
-
-    fn update_frame_data(&mut self) {
+    fn update_table_data(&mut self) {
         let table = &mut self.tables[self.current_table];
         let columns = &mut self.data[table.data_idx];
-        let rbegin = table.offset_row;
-        let rend = std::cmp::min(rbegin + self.table_heigh, table.rows.len());
 
-        trace!("Cr {}, Cc {}, Or {}, Oc {}, Rb {}, Re {}, th: {}, tw: {}", table.curser_row, table.curser_column, table.offset_row, table.offset_column, rbegin, rend, self.table_heigh, self.table_width);
+        table.width = self.uilayout.table_width;
+        table.heigh = self.uilayout.table_height;
+
+        let rbegin = table.offset_row;
+        let rend = std::cmp::min(rbegin + table.heigh, table.rows.len());
+
+        trace!("I:{}, Cr {}, Cc {}, Or {}, Oc {}, Rb {}, Re {}, tw: {}, th:{}, uiw: {}, uih: {}", 
+            table.show_index, table.curser_row, table.curser_column, table.offset_row, table.offset_column,
+            rbegin, rend, table.width, table.heigh, self.uilayout.width, self.uilayout.height);
 
         table.visible_columns = Vec::new();
-        let mut width_budget = self.table_width;
+        let mut width_budget = self.uilayout.table_width;
 
         // Calculate current render with for each column
         for column in columns.iter_mut() {
@@ -296,7 +367,9 @@ impl Model {
             }
         }
 
-        self.update_rendering();
+        // Update the index
+        table.build_index();
+        self.update_uidata();
     }
 
     fn get_visible_name(name: String, width: usize) -> String {
@@ -418,18 +491,25 @@ impl Model {
         self.status = Status::EXITING;
     }
 
-    pub fn update(&mut self, message: Option<Message>, table_width: usize, table_heigh: usize) -> Result<(), TVError> {
-        self.table_width = table_width;
-        self.table_heigh = table_heigh;
+    fn ui_resize(&mut self, width: usize, height: usize) {
+        trace!("UI was resized! w:{}->{}, h:{}->{}",
+            self.uilayout.width, width,
+            self.uilayout.height, height
+        );
+        self.uilayout = UILayout::from_model(self, width, height);
+        self.update_table_data();
+    }
 
+    pub fn update(&mut self, message: Option<Message>) -> Result<(), TVError> {
         if self.last_data_change - self.last_update > std::time::Duration::ZERO {
             debug!("Underlying data has changed! Updating infos ...");
+            /* TODO: CHeck if this is still needed!*/
             let table = &self.tables[self.current_table];
             for column in self.data[table.data_idx].iter_mut() {
                 let render_width = Self::calculate_column_width(column, self.config.default_column_width);
                 column.render_width = render_width;
             }
-            self.update_frame_data();
+            self.update_table_data();
         }
 
         if let Some(msg) = message {
@@ -446,6 +526,7 @@ impl Model {
                 Message::GrowColumn => self.grow_selected_column(),
                 Message::ShrinkColumn => self.shrink_selected_column(),
                 Message::ToggleIndex => self.toggle_index(),
+                Message::Resize(width, height) => self.ui_resize(width, height),
             }
         }
 
@@ -459,7 +540,10 @@ impl Model {
     fn toggle_index(&mut self) {
         let table = &mut self.tables[self.current_table];
         table.show_index = !table.show_index;
-        self.update_frame_data();
+
+        // Update ui layout and the underlying data
+        self.uilayout = UILayout::from_model(self, self.uilayout.width, self.uilayout.height);
+        self.update_table_data();
     }
  
     fn grow_selected_column(&mut self) {
@@ -470,7 +554,7 @@ impl Model {
             ColumnStatus::EXPANDED => ColumnStatus::EXPANDED,
         };
         self.data[table.data_idx][table.visible_columns[table.curser_column]].status = new_status;
-        self.update_frame_data();
+        self.update_table_data();
     }
 
     fn shrink_selected_column(&mut self) {
@@ -481,26 +565,26 @@ impl Model {
             ColumnStatus::EXPANDED => ColumnStatus::NORMAL,
         };
         self.data[table.data_idx][table.visible_columns[table.curser_column]].status = new_status;
-        self.update_frame_data();
+        self.update_table_data();
     }
 
     fn move_selection_beginning(&mut self) {
         let table = &mut self.tables[self.current_table];
         table.curser_row = 0;
         table.offset_row = 0;
-        self.update_frame_data();
+        self.update_table_data();
     }
 
     fn move_selection_end(&mut self) {
         let table = &mut self.tables[self.current_table];
-        if table.rows.len() < self.table_heigh {
+        if table.rows.len() < self.uilayout.table_height {
             table.offset_row = 0;
             table.curser_row = table.rows.len()-1;
         } else {
-            table.offset_row = table.rows.len()-self.table_heigh;
-            table.curser_row = self.table_heigh-1;
+            table.offset_row = table.rows.len()-self.uilayout.table_height;
+            table.curser_row = self.uilayout.table_height-1;
         }
-        self.update_frame_data();
+        self.update_table_data();
     }
 
     fn move_selection_up(&mut self, size: usize) {
@@ -514,10 +598,9 @@ impl Model {
             if table.offset_row > 0 {
                 // Shift table up
                 table.offset_row = table.offset_row.saturating_sub(size);
-                self.update_frame_data();
             }
         }
-        self.update_rendering();
+        self.update_table_data();
     }
 
     fn move_selection_down(&mut self, size: usize) {
@@ -525,16 +608,15 @@ impl Model {
         let table = &mut self.tables[self.current_table];
         if table.curser_row + table.offset_row < (table.rows.len()-1) {
             // Somewhere in the Frame
-            if table.curser_row < self.table_heigh-1 {
+            if table.curser_row < self.uilayout.table_height-1 {
                 // Somewhere in the middle of the table
-                table.curser_row = std::cmp::min(table.curser_row + size, self.table_heigh-1);
+                table.curser_row = std::cmp::min(table.curser_row + size, self.uilayout.table_height-1);
             } else {
                 // At the bottom of the table, need to shift table down
                 table.offset_row = std::cmp::min(table.offset_row + size, table.rows.len()-1);
-                table.curser_row = std::cmp::min(self.table_heigh-1, table.rows.len()-table.offset_row);
-                self.update_frame_data();
+                table.curser_row = std::cmp::min(self.uilayout.table_height-1, table.rows.len()-table.offset_row);
             }
-            self.update_rendering();
+            self.update_table_data();
         } 
     }
 
@@ -544,9 +626,8 @@ impl Model {
             table.curser_column = table.curser_column.saturating_sub(1);
         } else if table.offset_column > 0 {
             table.offset_column = table.offset_column.saturating_sub(1);
-            self.update_frame_data();
         }
-        self.update_rendering();
+        self.update_table_data();
     }
 
     fn move_selection_right(&mut self) {
@@ -560,9 +641,8 @@ impl Model {
             } else {
                 // At the end of the screen
                 table.offset_column += 1;
-                self.update_frame_data();
             }
-            self.update_rendering();
+            self.update_table_data();
         }
     }
 
