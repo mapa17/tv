@@ -1,17 +1,18 @@
 
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Margin};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell};
 use ratatui::{Frame, layout::Rect};
-use tracing::{warn, trace, debug};
+use tracing::{warn, trace};
 use std::time::Instant;
 
 use crate::domain::TVConfig;
-use crate::model::{ColumnView, Model, TableView, UIData, UILayout};
+use crate::model::{UIData, UILayout};
 
 pub const INDEX_COLUMN_BORDER: usize = 2;
 pub const SCROLLBAR_WIDTH: usize = 1;
 pub const TABLE_HEADER_HEIGHT: usize = 1;
+pub const RECORD_HEADER_HEIGHT: usize = 1;
 
 #[derive(Clone)]
 struct UIColors {
@@ -121,38 +122,17 @@ impl TableUI {
         }
         let horizontal = &Layout::horizontal([Constraint::Length(index_width as u16), Constraint::Length((s.table_width + SCROLLBAR_WIDTH) as u16)]);
         let hsplit = horizontal.split(vsplit[0]);
-       
-        trace!("Splitting table for index from total={}, index={}, table={}", vsplit[0].width, hsplit[0].width, hsplit[1].width);
+        //trace!("Splitting table for index from total={}, index={}, table={}", vsplit[0].width, hsplit[0].width, hsplit[1].width);
         
         TableUILayout {
             table: hsplit[1],
             cmd: vsplit[1],
             index: hsplit[0],
         }
-
-        /*
-        if s.index_width > 0 {
-            let horizontal = &Layout::horizontal([Constraint::Length((index_width + INDEX_COLUMN_BORDER) as u16), Constraint::Fill(1)]);
-            let w = vsplit[0].width;
-            let hsplit = horizontal.split(vsplit[0]);
-            trace!("Splitting table for index from total={}, index={}, table={}", w, hsplit[0].width, hsplit[1].width);
-            TableUILayout {
-                table: hsplit[1],
-                cmd: vsplit[1],
-                index: Some(hsplit[0]),
-            }
- 
-        } else {
-            TableUILayout {
-                table: vsplit[0],
-                cmd: vsplit[1],
-                index: None,
-            }
-        }
- */
     }
 
     pub fn draw(&mut self, data: &UIData, frame: &mut Frame) {
+        trace!{"Drawing ..."};
         let layout = Self::create_layout(frame, &data.layout);
         
         self.render_table(data, frame, layout.table);
@@ -200,7 +180,7 @@ impl TableUI {
             return
         }
         let mut rows = Vec::new();
-        let nrows = data.index.data.len();
+        let nrows = data.table[0].data.len(); // Assume there is always at least one column
         for ridx in 0..nrows {
             rows.push(Row::new(columns.iter().map(|c| c.data[ridx].clone()).collect::<Vec<String>>()).style(self.styles.row));
         }
@@ -211,7 +191,6 @@ impl TableUI {
         
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
         self.scrollbar_state = self.scrollbar_state.content_length(data.nrows).position(data.abs_selected_row); //.viewport_content_length(1);
-        frame.render_stateful_widget(scrollbar, area, &mut self.scrollbar_state);
 
         let table = Table::new(rows, widths)
             //.block(Block::new().title("Table"))
@@ -224,9 +203,11 @@ impl TableUI {
         self.table_state.select_cell(Some((data.selected_row, data.selected_column)));
         frame.render_stateful_widget(table, area, &mut self.table_state);
 
-        }
+        // using an inner vertical margin of 1 unit makes the scrollbar inside the block
+        frame.render_stateful_widget(scrollbar, area.inner(Margin {vertical: 1, horizontal: 0,}), &mut self.scrollbar_state);
+    }
 
-    fn render_cmdline(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
+    fn render_cmdline(&mut self, _data: &UIData, frame: &mut Frame, area: Rect) {
         let b = Block::default().title("Cmd").borders(Borders::ALL);
         frame.render_widget(b, area);
     }

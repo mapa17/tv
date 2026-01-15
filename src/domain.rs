@@ -49,6 +49,10 @@ pub enum Message {
     GrowColumn,
     ToggleIndex,
     Resize(usize, usize,),
+    CopyCell,
+    CopyRow,
+    Enter,
+    Exit,
     Quit,
 }
 

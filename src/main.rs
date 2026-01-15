@@ -110,13 +110,11 @@ fn run() -> Result<(), TVError> {
     let area = terminal.get_frame().area();
     let mut message= Some(Message::Resize(area.width as usize, area.height as usize)); 
 
-    while model.status != Status::EXITING {
-        // Handle events and map to a Message
+    while model.status != Status::QUITTING {
         model.update(message)?;
 
         let uidata = model.get_uidata();
         if ui.needs_redrawing(uidata) {
-            // Render the current view
             terminal.draw(|f| ui.draw(uidata, f))?;
         }
 

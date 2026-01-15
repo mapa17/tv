@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tracing::trace;
 
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use ratatui::crossterm::event::{self, KeyCode, KeyModifiers};
 use crate::domain::{TVConfig, TVError, Message};
 use crate::model::Model;
 
@@ -47,6 +47,10 @@ impl Controller {
             (KeyCode::Char('-'), KeyModifiers::NONE) => Some(Message::ShrinkColumn),
             (KeyCode::Char('+'), KeyModifiers::NONE) => Some(Message::GrowColumn),
             (KeyCode::Char('n'), KeyModifiers::NONE) => Some(Message::ToggleIndex),
+            (KeyCode::Char('y'), KeyModifiers::NONE) => Some(Message::CopyCell),
+            (KeyCode::Char('Y'), KeyModifiers::SHIFT) => Some(Message::CopyRow),
+            (KeyCode::Enter, KeyModifiers::NONE) => Some(Message::Enter),
+            (KeyCode::Esc, KeyModifiers::NONE) => Some(Message::Exit),
             _ => None,
         };
         trace!("Mapped: {key:?} => {message:?}");

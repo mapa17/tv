@@ -1,0 +1,17 @@
+id,name,price,category,quantity,available,notes-----------------------very-------------wide-----,unicode_example
+1,Basic Widget,19.99,"Tools, Hardware",25,true,"Standard item",正常
+2,"Deluxe ""Pro"" Widget",45.50,"Tools & More",10,true,"Includes ""extra"" parts",café
+3,≤Special Item≤,99.99,"Specialty",5,true,"Contains < > & symbols",αβγδε
+4,Empty Test,,Utilities,0,false,"",😀🚀
+5,Price: $100.00,100.00,Finance,100,true,"Currency symbol test",€¥£
+6,"Line
+Break",12.50,"Multiline",8,true,"Contains newline",字
+7,Comma,Separated,"Test,Category",1,true,""","" in data",🎯
+8,Numbers Only,123.456,"Numeric",999,false,"123.456",一二三
+9,True/False,0.00,"Test",1,false,"boolean values and long, very long lines ........................ ----- ..................--. Even more stuff. ###############################################################################################",∞
+10,Final Item,-15.75,"Discount",-5,true,"Negative values. Newlines if possible
+no se, but it does have some!
+
+
+
+Many more.",🚀🌍✨

@@ -6,10 +6,10 @@ use std::time::Instant;
 use polars::prelude::*;
 use tracing::{info, debug, error, trace};
 use rayon::prelude::*;
-use tracing_subscriber::fmt::TestWriter;
+use arboard::Clipboard;
 
 use crate::domain::{TVError, Message, TVConfig};
-use crate::ui::{TableUI, SCROLLBAR_WIDTH, INDEX_COLUMN_BORDER, TABLE_HEADER_HEIGHT};
+use crate::ui::{SCROLLBAR_WIDTH, TABLE_HEADER_HEIGHT, RECORD_HEADER_HEIGHT};
 
 
 // A struct with different types
@@ -27,7 +27,7 @@ pub enum Status {
     READY,
     LOADING,
     PROCESSING,
-    EXITING,
+    QUITTING,
 }
 
 #[derive(Debug)]
@@ -86,10 +86,16 @@ pub enum ColumnStatus {
     COLLAPSED,
 }
 
+enum Modus{
+    TABLE,
+    RECORD,
+}
+
 pub struct TableView {
     data_idx: usize, // Dataset index
     rows: Vec<usize>, // Mapping of TableView row index to data index
     visible_columns: Vec<usize>, // Idx of visible columns that are send to the UI for rendering.
+    visible_width: usize,
     curser_row: usize,
     curser_column: usize,
     offset_row: usize,
@@ -107,6 +113,7 @@ impl TableView {
             data_idx: 0,
             rows: Vec::new(),
             visible_columns: Vec::new(),
+            visible_width: 0,
             curser_column: 0,
             curser_row: 0,
             offset_column: 0,
@@ -128,6 +135,43 @@ impl TableView {
         self.index = ColumnView { name: "".to_string(), width, data} 
     }
 }
+
+struct RecordView {
+    table_idx: usize, // Table view index
+    header_data: Vec<String>,
+    header_width: usize,
+    header_view: ColumnView,
+    row_data: Vec<String>,
+    row_width: usize,
+    row_view: ColumnView,
+    record_idx: usize, // Index in TableView.rows[XXX]
+    curser_row: usize,
+    curser_offset: usize,
+    last_update: Instant,
+    height: usize,
+    width: usize,
+}
+
+impl RecordView {
+    fn empty() -> Self {
+        RecordView{
+            table_idx: 0,
+            header_data: Vec::new(),
+            header_width: 0,
+            header_view: ColumnView::empty(),
+            row_data: Vec::new(),
+            row_width: 0,
+            row_view: ColumnView::empty(),
+            record_idx: 0,
+            curser_row: 0,
+            curser_offset: 0,
+            last_update: Instant::now(),
+            height: 0,
+            width: 0,
+        }
+    }
+}
+
 
 pub struct UIData {
     pub table: Vec<ColumnView>,
@@ -184,30 +228,36 @@ impl UILayout {
         let layout = UILayout {
             width: ui_width,
             height: ui_height,
-            table_width: table_width,
-            table_height: table_height,
-            index_width: index_width,
-            index_height: index_height,
-            cmdline_width: cmdline_width,
+            table_width,
+            table_height,
+            index_width,
+            index_height,
+            cmdline_width,
             cmdline_height: cmdline_heigth,
         };
         trace!("Build UILayout: {:?}", layout);
-        return layout;
+        layout
     }
 }
+
+
+
 
 //#[derive(Debug)]
 pub struct Model {
     file_info: FileInfo,
     config: TVConfig,
     pub status: Status,
+    modus: Modus,
     data: Vec<Vec<Column>>,
     tables: Vec<TableView>,
+    record_view: RecordView,
     current_table: usize,
     last_update: Instant,
     last_data_change: Instant,
     uilayout: UILayout,
     uidata: UIData,
+    clipboard: Clipboard,
 }
 
 impl Model {
@@ -219,10 +269,12 @@ impl Model {
             FileType::XLSX => todo!(),
         };
 
-        // Load dataframe using a different thread for each column
+        // Load dataframe using rayon with data parallelism.
+        // Each column is loaded in its own thread.
         // This is a very intensive operation as the data is pre-processed.
         // The returned columns hold all data as Strings in memory.
         let start_time = Instant::now();
+
         let df = Arc::new(frame.clone().collect()?);
         let c_: Result<Vec<Column>, _> = df
             .get_column_names()
@@ -231,6 +283,7 @@ impl Model {
             .map(|(idx, name)| Self::load_columns(&df, idx, name))
             .collect();
         let columns = c_?;
+
         let data_loading_duration = start_time.elapsed().as_millis();
         info!("Loading data took {data_loading_duration}ms ...");
         for c in columns.iter() {
@@ -245,19 +298,36 @@ impl Model {
             Self {
                 file_info,
                 config: config.clone(),
+                modus: Modus::TABLE,
                 status: Status::READY,
                 data: vec![columns],
                 tables: vec![table],
+                record_view: RecordView::empty(),
                 current_table: 0,
                 last_update: Instant::now() - std::time::Duration::from_secs(1),
                 last_data_change: Instant::now(),
                 uilayout: ui_size,
                 uidata: UIData::empty(), // TODO: find out how to do this better. How can i in a factory function create an object that relies on self to exit?
+                clipboard: Clipboard::new().unwrap(),
             })
     }
 
-    fn update_uidata(&mut self) {
-        trace!("Updating uidata!");
+    fn update_uidata_from_record(&mut self) {
+        let table = &mut self.tables[self.current_table];
+        let record = &self.record_view;
+        self.uidata = UIData {
+            table: vec![record.header_view.clone(), record.row_view.clone()],
+            index: table.index.clone(), 
+            nrows: record.row_view.data.len(),
+            selected_row: record.curser_row,
+            selected_column: 1,
+            abs_selected_row: record.curser_row + record.curser_offset,
+            layout: self.uilayout.clone(),
+            last_update: Instant::now(),
+        }
+    }
+
+    fn update_uidata_from_table(&mut self) {
         let table = &mut self.tables[self.current_table];
 
         self.uidata = UIData {
@@ -270,10 +340,6 @@ impl Model {
             layout: self.uilayout.clone(),
             last_update: Instant::now(),
         }
-    }
-
-    fn get_current_table(&self) -> &TableView {
-        &self.tables[self.current_table]
     }
 
     fn detect_file_type(path: &Path) -> Result<FileType, TVError> {
@@ -299,6 +365,55 @@ impl Model {
         ColumnView { name: "...".to_string(), width: 3, data }
     }
 
+    fn build_record_view(&mut self, record_idx: usize, table_idx: usize) {
+        trace!("Building record view ...");
+        let table = &self.tables[self.current_table];
+        let columns = &self.data[table.data_idx];
+        let record = &mut self.record_view;
+        // Get header names 
+        let HEADER_MAX_WIDTH = 25;
+        record.header_data = columns.into_iter().map(|c| c.name.chars().take(HEADER_MAX_WIDTH).collect::<String>()).collect::<Vec<String>>();
+
+
+        record.curser_offset = 0;
+        record.curser_row = 0;
+        record.record_idx = record_idx;
+        record.table_idx = table_idx;
+        record.height = table.heigh;
+        record.width = table.width; 
+
+        record.header_width = record.header_data.iter().map(|h| h.len()).max().unwrap_or(0);
+        record.row_width = record.width - record.header_width;
+
+        self.update_record_data();
+    }
+
+    fn update_record_data(&mut self) {
+        let table = &self.tables[self.current_table];
+        let columns = &self.data[table.data_idx];
+        let record = &mut self.record_view;
+
+        record.row_data = columns.iter().map(|c| c.data[table.rows[record.record_idx]].clone()).collect::<Vec<String>>();
+
+        let rbegin = record.curser_offset;
+        let rend = std::cmp::min(rbegin + record.height, record.row_data.len()); 
+
+        trace!("Record: rIdx {}, rb {}, re {}, rows {}", record.record_idx, rbegin, rend, record.row_data.len());
+        record.header_view = ColumnView {
+            name: "Headers".to_string(),
+            data: record.header_data[rbegin..rend].to_vec(),
+            width: record.header_width,
+        };
+
+        record.row_view = ColumnView{
+            name: "Values".to_string(),
+            data: record.row_data[rbegin..rend].to_vec(),
+            width: record.row_width, 
+        };
+        self.record_view.last_update = Instant::now();
+
+        self.update_uidata_from_record();
+    }
 
     fn update_table_data(&mut self) {
         let table = &mut self.tables[self.current_table];
@@ -310,14 +425,16 @@ impl Model {
         let rbegin = table.offset_row;
         let rend = std::cmp::min(rbegin + table.heigh, table.rows.len());
 
-        trace!("I:{}, Cr {}, Cc {}, Or {}, Oc {}, Rb {}, Re {}, tw: {}, th:{}, uiw: {}, uih: {}", 
+        trace!("Table: I:{}, Cr {}, Cc {}, Or {}, Oc {}, Rb {}, Re {}, tw: {}, th:{}, uiw: {}, uih: {}", 
             table.show_index, table.curser_row, table.curser_column, table.offset_row, table.offset_column,
             rbegin, rend, table.width, table.heigh, self.uilayout.width, self.uilayout.height);
 
         table.visible_columns = Vec::new();
         let mut width_budget = self.uilayout.table_width;
+        let mut visible_width = 0;
 
         // Calculate current render with for each column
+        // This could change because a column was expanded or collapsed
         for column in columns.iter_mut() {
             column.render_width = Self::calculate_column_width(column, self.config.default_column_width);
         }
@@ -327,12 +444,17 @@ impl Model {
             if (column.render_width+1) <= width_budget {
                 table.visible_columns.push(cidx+table.offset_column);
                 width_budget -= column.render_width + 1; // Rendered with and 1 spacer character
+                visible_width += column.render_width + 1;
             }
             else {
+                // Add the last partial visible column
                 table.visible_columns.push(cidx+table.offset_column);
+                visible_width += column.render_width + 1;
                 break;
             }
         }
+        // Store how wide the table would be in its full rendering to know the most right column is only partially rendered
+        table.visible_width = visible_width;
 
         // Growing columns can reduce the number of visible columns. Make sure the column curser is at most the last visible column
         table.curser_column = std::cmp::min(table.curser_column, table.visible_columns.len()-1);
@@ -369,7 +491,7 @@ impl Model {
 
         // Update the index
         table.build_index();
-        self.update_uidata();
+        self.update_uidata_from_table();
     }
 
     fn get_visible_name(name: String, width: usize) -> String {
@@ -384,33 +506,6 @@ impl Model {
         reduced_name
     }
 
-    async fn load_frame(frame: &LazyFrame) -> Result<Vec<Column>, TVError> {
-        // Collect once - shared cost
-        let df = frame.clone().collect()?;
-        let df = Arc::new(df);  // Share DataFrame across threads
-        
-        let mut tasks = Vec::new();
-        
-        for (idx, col_name) in df.get_column_names().iter().enumerate() {
-            let df_clone = Arc::clone(&df);
-            let col_name = col_name.to_string();
-            
-            let task = tokio::spawn(async move {
-                Self::load_columns(&df_clone, idx, &col_name)
-            });
-            tasks.push(task);
-        }
-        
-        // Wait for all tasks
-        let mut columns = Vec::new();
-        for task in tasks {
-            let result = task.await
-                .map_err(|e| TVError::LoadingFailed(format!("Loading column data failed: {}", e)))??;
-            columns.push(result);
-        }
-        
-        Ok(columns)
-    }
 
     fn load_columns(df: &DataFrame, idx: usize, col_name: &str) -> Result<Column, PolarsError> {
         let col = df.column(col_name)?.cast(&DataType::String)?;
@@ -421,7 +516,7 @@ impl Model {
 
         for value in series.into_iter() {
             let ss = match value {
-                Some(s) => s.to_string(),
+                Some(s) => s.to_string().replace("\r\n", " ↵ ").replace("\n", " ↵ "),
                 None => String::from("∅"),
             };
 
@@ -483,12 +578,12 @@ impl Model {
         LazyCsvReader::new(PlPath::Local(path.as_path().into())).with_has_header(true).finish()
     }
 
-    pub fn get_path(&self) -> PathBuf {
-        self.file_info.path.clone()
-    }
+    // pub fn get_path(&self) -> PathBuf {
+    //     self.file_info.path.clone()
+    // }
 
-    pub fn exit(&mut self){
-        self.status = Status::EXITING;
+    pub fn quit(&mut self){
+        self.status = Status::QUITTING;
     }
 
     fn ui_resize(&mut self, width: usize, height: usize) {
@@ -502,33 +597,55 @@ impl Model {
 
     pub fn update(&mut self, message: Option<Message>) -> Result<(), TVError> {
         if self.last_data_change - self.last_update > std::time::Duration::ZERO {
-            debug!("Underlying data has changed! Updating infos ...");
-            /* TODO: CHeck if this is still needed!*/
-            let table = &self.tables[self.current_table];
-            for column in self.data[table.data_idx].iter_mut() {
-                let render_width = Self::calculate_column_width(column, self.config.default_column_width);
-                column.render_width = render_width;
-            }
             self.update_table_data();
         }
 
         if let Some(msg) = message {
-            match msg {
-                Message::Quit => self.exit(),
-                Message::MoveDown => self.move_selection_down(1),
-                Message::MoveLeft => self.move_selection_left(),
-                Message::MoveRight => self.move_selection_right(),
-                Message::MoveUp => self.move_selection_up(1),
-                Message::MovePageUp => self.move_selection_up(10),
-                Message::MovePageDown => self.move_selection_down(10),
-                Message::MoveBeginning => self.move_selection_beginning(),
-                Message::MoveEnd => self.move_selection_end(),
-                Message::GrowColumn => self.grow_selected_column(),
-                Message::ShrinkColumn => self.shrink_selected_column(),
-                Message::ToggleIndex => self.toggle_index(),
-                Message::Resize(width, height) => self.ui_resize(width, height),
+            match self.modus {
+                Modus::TABLE => {
+                    match msg {
+                        Message::Quit => self.quit(),
+                        Message::MoveDown => self.move_table_selection_down(1),
+                        Message::MoveLeft => self.move_table_selection_left(),
+                        Message::MoveRight => self.move_table_selection_right(),
+                        Message::MoveUp => self.move_table_selection_up(1),
+                        Message::MovePageUp => self.move_table_selection_up(10),
+                        Message::MovePageDown => self.move_table_selection_down(10),
+                        Message::MoveBeginning => self.move_table_selection_beginning(),
+                        Message::MoveEnd => self.move_table_selection_end(),
+                        Message::GrowColumn => self.grow_table_selected_column(),
+                        Message::ShrinkColumn => self.shrink_table_selected_column(),
+                        Message::ToggleIndex => self.toggle_table_index(),
+                        Message::Resize(width, height) => self.ui_resize(width, height),
+                        Message::CopyCell => self.copy_table_cell(),
+                        Message::CopyRow => self.copy_table_row(),
+                        Message::Enter => self.enter(),
+                        Message::Exit => self.exit(),
+                    }
+                },
+                Modus::RECORD => {
+                    match msg {
+                        Message::Quit => self.quit(),
+                        Message::MoveDown => self.move_record_selection_down(1),
+                        Message::MoveLeft => self.previous_record(),
+                        Message::MoveRight => self.next_record(),
+                        Message::MoveUp => self.move_record_selection_up(1),
+                        Message::MovePageUp => self.move_record_selection_up(10),
+                        Message::MovePageDown => self.move_record_selection_down(10),
+                        Message::MoveBeginning => (),
+                        Message::MoveEnd => (),
+                        Message::GrowColumn => (),
+                        Message::ShrinkColumn => (),
+                        Message::ToggleIndex => (),
+                        Message::Resize(width, height) => self.ui_resize(width, height),
+                        Message::CopyCell => self.copy_record_cell(),
+                        Message::CopyRow => (),
+                        Message::Enter => self.enter(),
+                        Message::Exit => self.exit(),
+                    }
+                },
             }
-        }
+       }
 
         self.last_update = Instant::now();
         Ok(())
@@ -537,7 +654,40 @@ impl Model {
 
     // -------------------- Control handling functions ---------------------- //
 
-    fn toggle_index(&mut self) {
+    fn enter(&mut self) {
+        match self.modus {
+            Modus::TABLE => {
+                let record_idx = {
+                    let table = &mut self.tables[self.current_table];
+                    table.show_index = false;
+                    table.offset_row + table.curser_row
+                };
+                // Disabling the index will change the ui layout. Recalculate it
+                self.uilayout = UILayout::from_model(self, self.uilayout.width, self.uilayout.height);
+                self.build_record_view(record_idx, self.current_table);
+                self.modus = Modus::RECORD;
+            },
+            Modus::RECORD =>  {
+                // Nothing to do here, we can not go into a single cell yet
+            },
+        }
+    }
+
+    fn exit(&mut self) {
+        match self.modus {
+            Modus::TABLE => {
+                // Nothing todo, there is no exit from table, only quit
+            },
+            Modus::RECORD =>  {
+                // Switch back to table mode
+                self.modus = Modus::TABLE;
+                self.update_table_data();
+            },
+        }
+ 
+    }
+
+    fn toggle_table_index(&mut self) {
         let table = &mut self.tables[self.current_table];
         table.show_index = !table.show_index;
 
@@ -545,8 +695,35 @@ impl Model {
         self.uilayout = UILayout::from_model(self, self.uilayout.width, self.uilayout.height);
         self.update_table_data();
     }
+
+    fn copy_table_cell(&mut self) {
+        let table = &self.tables[self.current_table];
+        let cell = self.uidata.table[table.curser_column].data[table.curser_row].clone();
+        trace!("Cell content: {}", cell);
+
+        match self.clipboard.set_text(cell) {
+            Ok(_) => trace!("Copied cell content to clipboard."),
+            Err(e) => trace!("Error copying to clipboard: {:?}", e),
+        }
+    }
+
+    fn copy_table_row(&mut self) {
+        let table = &self.tables[self.current_table];
+        let row = table.offset_row + table.curser_row;
+
+        let columns = &self.data[table.data_idx]; 
+        let content = columns.iter().map(|c| c.data[row].clone()).collect::<Vec<String>>(); 
+        let row_content = content.join("; ");
+
+        trace!("Row content: {}", row_content);
+
+        match self.clipboard.set_text(row_content) {
+            Ok(_) => trace!("Copied cell content to clipboard."),
+            Err(e) => trace!("Error copying to clipboard: {:?}", e),
+        }
+    }
  
-    fn grow_selected_column(&mut self) {
+    fn grow_table_selected_column(&mut self) {
         let table = &mut self.tables[self.current_table];
         let new_status = match self.data[table.data_idx][table.visible_columns[table.curser_column]].status {
             ColumnStatus::COLLAPSED => ColumnStatus::NORMAL,
@@ -557,7 +734,7 @@ impl Model {
         self.update_table_data();
     }
 
-    fn shrink_selected_column(&mut self) {
+    fn shrink_table_selected_column(&mut self) {
         let table = &mut self.tables[self.current_table];
         let new_status = match self.data[table.data_idx][table.visible_columns[table.curser_column]].status {
             ColumnStatus::COLLAPSED => ColumnStatus::COLLAPSED,
@@ -568,14 +745,14 @@ impl Model {
         self.update_table_data();
     }
 
-    fn move_selection_beginning(&mut self) {
+    fn move_table_selection_beginning(&mut self) {
         let table = &mut self.tables[self.current_table];
         table.curser_row = 0;
         table.offset_row = 0;
         self.update_table_data();
     }
 
-    fn move_selection_end(&mut self) {
+    fn move_table_selection_end(&mut self) {
         let table = &mut self.tables[self.current_table];
         if table.rows.len() < self.uilayout.table_height {
             table.offset_row = 0;
@@ -587,7 +764,7 @@ impl Model {
         self.update_table_data();
     }
 
-    fn move_selection_up(&mut self, size: usize) {
+    fn move_table_selection_up(&mut self, size: usize) {
 
         let table = &mut self.tables[self.current_table];
         if table.curser_row > 0 {
@@ -603,8 +780,7 @@ impl Model {
         self.update_table_data();
     }
 
-    fn move_selection_down(&mut self, size: usize) {
-
+    fn move_table_selection_down(&mut self, size: usize) {
         let table = &mut self.tables[self.current_table];
         if table.curser_row + table.offset_row < (table.rows.len()-1) {
             // Somewhere in the Frame
@@ -620,7 +796,7 @@ impl Model {
         } 
     }
 
-    fn move_selection_left(&mut self) {
+    fn move_table_selection_left(&mut self) {
         let table = &mut self.tables[self.current_table];
         if table.curser_column > 0 {
             table.curser_column = table.curser_column.saturating_sub(1);
@@ -630,7 +806,7 @@ impl Model {
         self.update_table_data();
     }
 
-    fn move_selection_right(&mut self) {
+    fn move_table_selection_right(&mut self) {
         let table = &mut self.tables[self.current_table];
 
         if table.curser_column + table.offset_column < (self.data[table.data_idx].len()-1){
@@ -643,7 +819,75 @@ impl Model {
                 table.offset_column += 1;
             }
             self.update_table_data();
+        } else {
+            // At the last visible column (which could be wider then the screen)
+            if table.visible_width > table.width {
+                if table.offset_column < (self.data[table.data_idx].len()-1) {
+                    table.offset_column += 1;
+                    self.update_table_data();
+                }
+            }
         }
+    }
+
+    fn copy_record_cell(&mut self) {
+        let record = &self.record_view;
+        let cell = record.row_data[record.curser_offset+record.curser_row].clone();
+        trace!("Cell content: {}", cell);
+
+        match self.clipboard.set_text(cell) {
+            Ok(_) => trace!("Copied cell content to clipboard."),
+            Err(e) => trace!("Error copying to clipboard: {:?}", e),
+        }
+    }
+
+    fn move_record_selection_up(&mut self, size: usize) {
+        let record = &mut self.record_view;
+        if record.curser_row > 0 {
+            // Curser somewhere in the middle
+            record.curser_row = record.curser_row.saturating_sub(size);
+        } else {
+            // Curser at the top
+            if record.curser_offset > 0 {
+                // Shift table up
+                record.curser_offset = record.curser_offset.saturating_sub(size);
+            }
+        }
+        self.update_record_data();
+    }
+
+
+    fn move_record_selection_down(&mut self, size: usize) {
+        let record = &mut self.record_view;
+        if record.curser_row + record.curser_offset < (record.row_data.len()-1) {
+            // Somewhere in the middle
+            if record.curser_row < record.height-1 {
+                // Somewhere in the middle of the table
+                record.curser_row = std::cmp::min(record.curser_row + size, record.height-1);
+            } else {
+                // At the bottom of the table, need to shift table down
+                record.curser_offset = std::cmp::min(record.curser_offset + size, record.row_data.len()-1);
+                record.curser_row = std::cmp::min(record.height-1, record.row_data.len()-record.curser_offset);
+            }
+            self.update_record_data();
+        } 
+    }
+
+    fn previous_record(&mut self) {
+        let record = &mut self.record_view;
+        if record.record_idx > 0 {
+            record.record_idx = record.record_idx.saturating_sub(1);
+        }
+        self.update_record_data();
+    }
+
+    fn next_record(&mut self) {
+        let record = &mut self.record_view;
+        let table = &self.tables[self.current_table];
+        if record.record_idx < table.rows.len()-1 {
+            record.record_idx+=1;
+        }
+        self.update_record_data();
     }
 
 
