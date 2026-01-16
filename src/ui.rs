@@ -8,11 +8,15 @@ use std::time::Instant;
 
 use crate::domain::TVConfig;
 use crate::model::{UIData, UILayout};
+use crate::popup::Popup;
 
 pub const INDEX_COLUMN_BORDER: usize = 2;
 pub const SCROLLBAR_WIDTH: usize = 1;
 pub const TABLE_HEADER_HEIGHT: usize = 1;
-pub const RECORD_HEADER_HEIGHT: usize = 1;
+//pub const RECORD_HEADER_HEIGHT: usize = 1;
+pub const CMDLINE_HEIGH: usize = 1;
+pub const POPUP_MARGIN: usize = 3;
+
 
 #[derive(Clone)]
 struct UIColors {
@@ -134,13 +138,16 @@ impl TableUI {
     pub fn draw(&mut self, data: &UIData, frame: &mut Frame) {
         trace!{"Drawing ..."};
         let layout = Self::create_layout(frame, &data.layout);
-        
-        self.render_table(data, frame, layout.table);
 
-        self.render_index(data, frame, layout.index);
-
-        self.render_cmdline(data, frame, layout.cmd);
-
+        if data.show_popup {
+            trace!{"Popup ..."};
+            self.render_popup(data, frame, layout.table);
+        } else {
+            trace!{"Table ..."};
+            self.render_table(data, frame, layout.table);
+            self.render_index(data, frame, layout.index);
+            self.render_cmdline(data, frame, layout.cmd);
+        }
         self.last_render = Instant::now();
     }
 
@@ -173,6 +180,16 @@ impl TableUI {
         }
     }
 
+    fn render_popup(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
+
+        let popup = Popup::default()
+            .content(data.popup_message.clone())
+            .style(Style::new().yellow())
+            .title("Help")
+            .title_style(Style::new().white().bold())
+            .border_style(Style::new().red());
+        frame.render_widget(popup, area.inner(Margin {vertical: POPUP_MARGIN as u16, horizontal: POPUP_MARGIN as u16,}));
+    }
     fn render_table(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
         let columns = &data.table;
         if columns.is_empty() {

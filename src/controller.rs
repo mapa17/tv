@@ -49,6 +49,7 @@ impl Controller {
             (KeyCode::Char('n'), KeyModifiers::NONE) => Some(Message::ToggleIndex),
             (KeyCode::Char('y'), KeyModifiers::NONE) => Some(Message::CopyCell),
             (KeyCode::Char('Y'), KeyModifiers::SHIFT) => Some(Message::CopyRow),
+            (KeyCode::Char('?'), KeyModifiers::NONE) => Some(Message::Help),
             (KeyCode::Enter, KeyModifiers::NONE) => Some(Message::Enter),
             (KeyCode::Esc, KeyModifiers::NONE) => Some(Message::Exit),
             _ => None,

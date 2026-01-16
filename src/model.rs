@@ -8,8 +8,8 @@ use tracing::{info, debug, error, trace};
 use rayon::prelude::*;
 use arboard::Clipboard;
 
-use crate::domain::{TVError, Message, TVConfig};
-use crate::ui::{SCROLLBAR_WIDTH, TABLE_HEADER_HEIGHT, RECORD_HEADER_HEIGHT};
+use crate::domain::{TVError, Message, TVConfig, HELP_TEXT};
+use crate::ui::{SCROLLBAR_WIDTH, TABLE_HEADER_HEIGHT, CMDLINE_HEIGH};
 
 
 // A struct with different types
@@ -86,9 +86,11 @@ pub enum ColumnStatus {
     COLLAPSED,
 }
 
+#[derive(Debug, Clone, Copy)]
 enum Modus{
     TABLE,
     RECORD,
+    POPUP,
 }
 
 pub struct TableView {
@@ -180,6 +182,8 @@ pub struct UIData {
     pub selected_row: usize,
     pub selected_column: usize,
     pub abs_selected_row: usize,
+    pub show_popup: bool,
+    pub popup_message: String,
     pub layout: UILayout,
     pub last_update: Instant,
 }
@@ -193,6 +197,8 @@ impl UIData {
             selected_row: 0,
             selected_column: 0,
             abs_selected_row: 0, 
+            show_popup: false,
+            popup_message: String::new(),
             layout: UILayout::default(),
             last_update: Instant::now(),
         }
@@ -218,7 +224,7 @@ impl UILayout {
         if table.show_index {
             index_width = table.index.width;
         } 
-        let cmdline_heigth = 4;
+        let cmdline_heigth = CMDLINE_HEIGH;
         let cmdline_width= ui_width;
        
         let table_width = ui_width - SCROLLBAR_WIDTH - index_width;
@@ -249,6 +255,7 @@ pub struct Model {
     config: TVConfig,
     pub status: Status,
     modus: Modus,
+    previous_modus: Modus,
     data: Vec<Vec<Column>>,
     tables: Vec<TableView>,
     record_view: RecordView,
@@ -299,6 +306,7 @@ impl Model {
                 file_info,
                 config: config.clone(),
                 modus: Modus::TABLE,
+                previous_modus: Modus::TABLE,
                 status: Status::READY,
                 data: vec![columns],
                 tables: vec![table],
@@ -321,6 +329,8 @@ impl Model {
             nrows: record.row_view.data.len(),
             selected_row: record.curser_row,
             selected_column: 1,
+            show_popup: false,
+            popup_message: String::new(),
             abs_selected_row: record.curser_row + record.curser_offset,
             layout: self.uilayout.clone(),
             last_update: Instant::now(),
@@ -337,6 +347,8 @@ impl Model {
             selected_row: table.curser_row,
             selected_column: table.curser_column,
             abs_selected_row: table.offset_row + table.curser_row,
+            show_popup: false,
+            popup_message: String::new(),
             layout: self.uilayout.clone(),
             last_update: Instant::now(),
         }
@@ -372,7 +384,7 @@ impl Model {
         let record = &mut self.record_view;
         // Get header names 
         let HEADER_MAX_WIDTH = 25;
-        record.header_data = columns.into_iter().map(|c| c.name.chars().take(HEADER_MAX_WIDTH).collect::<String>()).collect::<Vec<String>>();
+        record.header_data = columns.iter().map(|c| c.name.chars().take(HEADER_MAX_WIDTH).collect::<String>()).collect::<Vec<String>>();
 
 
         record.curser_offset = 0;
@@ -600,6 +612,7 @@ impl Model {
             self.update_table_data();
         }
 
+        trace!("Update: Modus {:?}, Message {:?}", self.modus, message);
         if let Some(msg) = message {
             match self.modus {
                 Modus::TABLE => {
@@ -619,6 +632,7 @@ impl Model {
                         Message::Resize(width, height) => self.ui_resize(width, height),
                         Message::CopyCell => self.copy_table_cell(),
                         Message::CopyRow => self.copy_table_row(),
+                        Message::Help => self.show_help(),
                         Message::Enter => self.enter(),
                         Message::Exit => self.exit(),
                     }
@@ -640,10 +654,34 @@ impl Model {
                         Message::Resize(width, height) => self.ui_resize(width, height),
                         Message::CopyCell => self.copy_record_cell(),
                         Message::CopyRow => (),
+                        Message::Help => self.show_help(),
                         Message::Enter => self.enter(),
                         Message::Exit => self.exit(),
                     }
                 },
+                Modus::POPUP => {
+                    match msg {
+                        Message::Quit => self.quit(),
+                        Message::MoveDown => (),
+                        Message::MoveLeft => (),
+                        Message::MoveRight => (),
+                        Message::MoveUp => (),
+                        Message::MovePageUp => (),
+                        Message::MovePageDown => (),
+                        Message::MoveBeginning => (),
+                        Message::MoveEnd => (),
+                        Message::GrowColumn => (),
+                        Message::ShrinkColumn => (),
+                        Message::ToggleIndex => (),
+                        Message::Resize(width, height) => self.ui_resize(width, height),
+                        Message::CopyCell => (),
+                        Message::CopyRow => (),
+                        Message::Help => (),
+                        Message::Enter => (),
+                        Message::Exit => self.exit(),
+                    }
+                },
+ 
             }
        }
 
@@ -666,10 +704,12 @@ impl Model {
                 self.uilayout = UILayout::from_model(self, self.uilayout.width, self.uilayout.height);
                 self.build_record_view(record_idx, self.current_table);
                 self.modus = Modus::RECORD;
+                self.previous_modus = Modus::TABLE;
             },
             Modus::RECORD =>  {
                 // Nothing to do here, we can not go into a single cell yet
             },
+            Modus::POPUP => {},
         }
     }
 
@@ -680,11 +720,32 @@ impl Model {
             },
             Modus::RECORD =>  {
                 // Switch back to table mode
+                self.previous_modus = Modus::RECORD;
                 self.modus = Modus::TABLE;
                 self.update_table_data();
             },
+            Modus::POPUP => {
+                trace!("Close popup ...");
+                self.modus = self.previous_modus;
+                self.previous_modus = Modus::POPUP;
+                self.uidata.show_popup = false;
+                self.uidata.last_update = Instant::now();
+                /*match self.modus {
+                    Modus::RECORD => self.update_record_data(),
+                    Modus::TABLE => self.update_table_data(),
+                    Modus::POPUP => (),
+                }*/
+            }
         }
  
+    }
+
+    fn show_help(&mut self) {
+        self.previous_modus = self.modus;
+        self.modus = Modus::POPUP;
+        self.uidata.popup_message = HELP_TEXT.to_string();
+        self.uidata.show_popup = true;
+        self.uidata.last_update = Instant::now();
     }
 
     fn toggle_table_index(&mut self) {
@@ -821,12 +882,11 @@ impl Model {
             self.update_table_data();
         } else {
             // At the last visible column (which could be wider then the screen)
-            if table.visible_width > table.width {
-                if table.offset_column < (self.data[table.data_idx].len()-1) {
+            if table.visible_width > table.width
+                && table.offset_column < (self.data[table.data_idx].len()-1) {
                     table.offset_column += 1;
                     self.update_table_data();
                 }
-            }
         }
     }
 

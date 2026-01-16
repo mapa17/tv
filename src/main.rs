@@ -10,7 +10,7 @@ mod model;
 mod ui;
 mod domain;
 mod controller;
-
+mod popup;
 
 use domain::{TVConfig, TVError, Message};
 use model::{Model, Status};

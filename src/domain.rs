@@ -51,8 +51,40 @@ pub enum Message {
     Resize(usize, usize,),
     CopyCell,
     CopyRow,
+    Help,
     Enter,
     Exit,
     Quit,
 }
 
+
+pub const HELP_TEXT: &str = "
+TV - Table Viewer Key bindings
+
+        == General ==
+q       : Quit
+
+        == Table View ==
+Enter   : Enter Record view for selected cell.
+h       : Move selection to the left.
+j       : Move selection to the down.
+k       : Move selection to the up.
+l       : Move selection to the right.
+J       : Jump page down
+K       : Jump page up
+g       : Jump to the first row
+G       : Jump to the last row
+-       : Shrink column
++       : Expand column
+
+
+        == Record View ==
+ESC     : Return to Table view
+h       : Show previous row record.
+j       : Move selection to the down.
+k       : Move selection to the up.
+l       : Show next row record.
+
+
+Question? Write to contact@pasieka.ai
+";
