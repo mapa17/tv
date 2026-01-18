@@ -16,7 +16,7 @@ impl Controller {
         }
     }
 
-    pub fn handle_event(&self, _model: &Model) -> Result<Option<Message>, TVError> {
+    pub fn handle_event(&self, model: &Model) -> Result<Option<Message>, TVError> {
         if event::poll(Duration::from_millis(self.event_poll_time as u64))? {
             match event::read()? {
                 // Detect frame resize event
@@ -25,6 +25,9 @@ impl Controller {
                     return Ok(Some(Message::Resize(width as usize, height as usize))); 
                 }
                 event::Event::Key(key) if key.kind == event::KeyEventKind::Press => {
+                    if model.raw_keyevents() {
+                        return Ok(Some(Message::RawKey(key)));
+                    }
                     return Ok(self.handle_key(key));
                 }
                 _ => {}
@@ -50,6 +53,7 @@ impl Controller {
             (KeyCode::Char('y'), KeyModifiers::NONE) => Some(Message::CopyCell),
             (KeyCode::Char('Y'), KeyModifiers::SHIFT) => Some(Message::CopyRow),
             (KeyCode::Char('?'), KeyModifiers::NONE) => Some(Message::Help),
+            (KeyCode::Char(':'), KeyModifiers::NONE) => Some(Message::EnterCommand),
             (KeyCode::Enter, KeyModifiers::NONE) => Some(Message::Enter),
             (KeyCode::Esc, KeyModifiers::NONE) => Some(Message::Exit),
             _ => None,

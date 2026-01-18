@@ -1,6 +1,7 @@
 
 use std::io::Error;
 use polars::error::PolarsError;
+use ratatui::crossterm::event;
 
 // This is a custom error type that we will be using in `parse_pos_nonzero()`.
 #[derive(Debug)]
@@ -52,9 +53,11 @@ pub enum Message {
     CopyCell,
     CopyRow,
     Help,
+    EnterCommand,
     Enter,
     Exit,
     Quit,
+    RawKey(event::KeyEvent),
 }
 
 

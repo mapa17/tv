@@ -2,7 +2,7 @@
 
 [x] Add an index column that is turned on per default and can be toggled with 'n'.
 [x] When jumping to the last column, make sure it can be rendered fully.
-[ ] Show curser position ... somewhere
+[x] Show curser position ... somewhere
 [x] BUG: Fix the table width to decrease when omitting index column.
 [x] Add minimal argument parsing that supports providing a filename.
 [ ] BUG: Expanded columns are not showing always the full content, especially when some other column is collapsed.
@@ -11,3 +11,6 @@
 [x] Enable up/down , left/right selection in record view.
 [ ] Enable search. Start out of search for next cell containing a substring, regex?
 [ ] Build a Cell Mode, where the complete table is the content of a single cell with all its newlines and everything.
+[ ] Add style for popup
+[x] Change CMDLine to something similar to a header.
+[ ] In Record mode, show current record count / total in status line.

@@ -1,8 +1,9 @@
 
 use ratatui::layout::{Constraint, Layout, Margin};
 use ratatui::style::{Color, Style, palette::tailwind};
-use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell};
+use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell, Paragraph};
 use ratatui::{Frame, layout::Rect};
+use ratatui::text::{Line, Span, Text};
 use tracing::{warn, trace};
 use std::time::Instant;
 
@@ -58,6 +59,7 @@ struct UIStyles {
     row: Style,
     selected_row: Style,
     header: Style,
+    statusline: Style,
     selected_cell: Style,
 }
 impl UIStyles {
@@ -68,6 +70,7 @@ impl UIStyles {
                 .fg(colors.selected_row_fg)
                 .bg(colors.selected_row_bg),
             header: Style::new().fg(colors.header_fg).bg(colors.header_bg).bold().underlined(),
+            statusline: Style::new().fg(colors.header_fg).bg(colors.header_bg),
             selected_cell: Style::new().fg(colors.selected_cell_fg).bg(colors.selected_cell_bg).bold().underlined(),
         }
     }
@@ -88,7 +91,7 @@ pub struct TableUI {
 
 struct TableUILayout {
     table: Rect,
-    cmd: Rect,
+    statusline: Rect,
     index: Rect,
 }
 
@@ -117,7 +120,7 @@ impl TableUI {
     }
 
     fn create_layout(frame: &Frame, s: &UILayout) -> TableUILayout {
-        let vertical = &Layout::vertical([Constraint::Length((s.table_height + TABLE_HEADER_HEIGHT) as u16), Constraint::Length(s.cmdline_height as u16)]);
+        let vertical = &Layout::vertical([Constraint::Length((s.table_height + TABLE_HEADER_HEIGHT) as u16), Constraint::Length(s.statusline_height as u16)]);
         let vsplit = vertical.split(frame.area());
 
         let mut index_width = s.index_width;
@@ -130,7 +133,7 @@ impl TableUI {
         
         TableUILayout {
             table: hsplit[1],
-            cmd: vsplit[1],
+            statusline: vsplit[1],
             index: hsplit[0],
         }
     }
@@ -146,7 +149,7 @@ impl TableUI {
             trace!{"Table ..."};
             self.render_table(data, frame, layout.table);
             self.render_index(data, frame, layout.index);
-            self.render_cmdline(data, frame, layout.cmd);
+            self.render_statusline(data, frame, layout.statusline);
         }
         self.last_render = Instant::now();
     }
@@ -201,8 +204,13 @@ impl TableUI {
         for ridx in 0..nrows {
             rows.push(Row::new(columns.iter().map(|c| c.data[ridx].clone()).collect::<Vec<String>>()).style(self.styles.row));
         }
+        // Fill up the rest of the table with empty strings to have the empty part of the table render with the same style.
+        for _ in nrows..data.layout.table_height {
+            rows.push(Row::new(vec![""].repeat(columns.len())).style(self.styles.row));
+        }
         let widths = columns.iter().map(|c| Constraint::Length(c.width as u16)).collect::<Vec<Constraint>>();
 
+        trace!("num rows: {}, nrows {}", rows.len(), nrows);
         let header = Row::new(columns.iter().map(|c| Cell::from(c.name.clone())).collect::<Vec<Cell>>())
             .style(self.styles.header);
         
@@ -224,8 +232,30 @@ impl TableUI {
         frame.render_stateful_widget(scrollbar, area.inner(Margin {vertical: 1, horizontal: 0,}), &mut self.scrollbar_state);
     }
 
-    fn render_cmdline(&mut self, _data: &UIData, frame: &mut Frame, area: Rect) {
-        let b = Block::default().title("Cmd").borders(Borders::ALL);
-        frame.render_widget(b, area);
+    fn render_statusline(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
+        let right = format!("{}/{}", data.abs_selected_row + 1, data.nrows);
+
+        let left = if data.active_cmdinput {
+            format!(":{}", data.cmdinput.input)
+        } else {
+            format!("{}", data.name)
+        };
+        
+        // Use chars().count() instead of .len() to handle multi-byte characters correctly in TUI
+        let total_width = area.width as usize;
+        let right_len = right.chars().count();
+        
+        // This format string says: Left-align 'left' in a space of (total_width - right_len)
+        let status_string = format!(
+            "{:<width$}{}", 
+            left, 
+            right, 
+            width = total_width.saturating_sub(right_len)
+        );
+
+        let status_bar = Paragraph::new(status_string)
+            .style(self.styles.statusline);
+            
+        frame.render_widget(status_bar, area);
     }
 }

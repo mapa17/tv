@@ -11,6 +11,7 @@ mod ui;
 mod domain;
 mod controller;
 mod popup;
+mod inputter;
 
 use domain::{TVConfig, TVError, Message};
 use model::{Model, Status};

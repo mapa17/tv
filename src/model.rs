@@ -4,12 +4,14 @@ use std::fs;
 use std::io::ErrorKind;
 use std::time::Instant;
 use polars::prelude::*;
+use ratatui::crossterm::event::KeyEvent;
 use tracing::{info, debug, error, trace};
 use rayon::prelude::*;
 use arboard::Clipboard;
 
 use crate::domain::{TVError, Message, TVConfig, HELP_TEXT};
 use crate::ui::{SCROLLBAR_WIDTH, TABLE_HEADER_HEIGHT, CMDLINE_HEIGH};
+use crate::inputter::{Inputter, InputResult};
 
 
 // A struct with different types
@@ -91,9 +93,11 @@ enum Modus{
     TABLE,
     RECORD,
     POPUP,
+    CMDINPUT,
 }
 
 pub struct TableView {
+    name: String,
     data_idx: usize, // Dataset index
     rows: Vec<usize>, // Mapping of TableView row index to data index
     visible_columns: Vec<usize>, // Idx of visible columns that are send to the UI for rendering.
@@ -112,6 +116,7 @@ pub struct TableView {
 impl TableView {
     fn empty() -> Self {
         TableView {
+            name: String::new(),
             data_idx: 0,
             rows: Vec::new(),
             visible_columns: Vec::new(),
@@ -176,6 +181,7 @@ impl RecordView {
 
 
 pub struct UIData {
+    pub name: String,
     pub table: Vec<ColumnView>,
     pub index: ColumnView,
     pub nrows: usize,
@@ -186,11 +192,14 @@ pub struct UIData {
     pub popup_message: String,
     pub layout: UILayout,
     pub last_update: Instant,
+    pub cmdinput: InputResult,
+    pub active_cmdinput: bool,
 }
 
 impl UIData {
     pub fn empty() -> Self {
         UIData {
+            name: String::new(),
             table: Vec::new(),
             index: ColumnView { name: "".to_string(), width: 0, data: Vec::new() },
             nrows: 0,
@@ -201,6 +210,8 @@ impl UIData {
             popup_message: String::new(),
             layout: UILayout::default(),
             last_update: Instant::now(),
+            cmdinput: InputResult::default(),
+            active_cmdinput: false,
         }
     }
 }
@@ -213,8 +224,8 @@ pub struct UILayout {
     pub table_height: usize,
     pub index_width: usize,
     pub index_height: usize,
-    pub cmdline_width: usize,
-    pub cmdline_height: usize,
+    pub statusline_width: usize,
+    pub statusline_height: usize,
 }
 
 impl UILayout {
@@ -238,8 +249,8 @@ impl UILayout {
             table_height,
             index_width,
             index_height,
-            cmdline_width,
-            cmdline_height: cmdline_heigth,
+            statusline_width: cmdline_width,
+            statusline_height: cmdline_heigth,
         };
         trace!("Build UILayout: {:?}", layout);
         layout
@@ -265,6 +276,9 @@ pub struct Model {
     uilayout: UILayout,
     uidata: UIData,
     clipboard: Clipboard,
+    input: Inputter,
+    last_input: InputResult,
+    active_cmdinput: bool,
 }
 
 impl Model {
@@ -300,6 +314,7 @@ impl Model {
         let mut table = TableView::empty();
         // set default row mapping
         table.rows = (0..columns[0].data.len()).collect();
+        table.name = file_info.path.file_name().and_then(|s| s.to_str()).unwrap_or("???").to_string();
 
         Ok(
             Self {
@@ -317,6 +332,9 @@ impl Model {
                 uilayout: ui_size,
                 uidata: UIData::empty(), // TODO: find out how to do this better. How can i in a factory function create an object that relies on self to exit?
                 clipboard: Clipboard::new().unwrap(),
+                input: Inputter::default(),
+                last_input: InputResult::default(),
+                active_cmdinput: false,
             })
     }
 
@@ -324,15 +342,19 @@ impl Model {
         let table = &mut self.tables[self.current_table];
         let record = &self.record_view;
         self.uidata = UIData {
+            name: table.name.clone(),
             table: vec![record.header_view.clone(), record.row_view.clone()],
             index: table.index.clone(), 
-            nrows: record.row_view.data.len(),
+            //#nrows: record.row_view.data.len(),
+            nrows: table.rows.len(),
             selected_row: record.curser_row,
             selected_column: 1,
             show_popup: false,
             popup_message: String::new(),
-            abs_selected_row: record.curser_row + record.curser_offset,
+            abs_selected_row: record.record_idx, // In the record view, show which record we are looking at instead of line in record view.
             layout: self.uilayout.clone(),
+            cmdinput: self.last_input.clone(),
+            active_cmdinput: self.active_cmdinput,
             last_update: Instant::now(),
         }
     }
@@ -341,6 +363,7 @@ impl Model {
         let table = &mut self.tables[self.current_table];
 
         self.uidata = UIData {
+            name: table.name.clone(),
             table: table.data.clone(),
             index: table.index.clone(), 
             nrows: table.rows.len(),
@@ -350,6 +373,8 @@ impl Model {
             show_popup: false,
             popup_message: String::new(),
             layout: self.uilayout.clone(),
+            cmdinput: self.last_input.clone(),
+            active_cmdinput: self.active_cmdinput,
             last_update: Instant::now(),
         }
     }
@@ -594,6 +619,10 @@ impl Model {
     //     self.file_info.path.clone()
     // }
 
+    pub fn raw_keyevents(&self) -> bool {
+        self.active_cmdinput
+    }
+
     pub fn quit(&mut self){
         self.status = Status::QUITTING;
     }
@@ -604,6 +633,7 @@ impl Model {
             self.uilayout.height, height
         );
         self.uilayout = UILayout::from_model(self, width, height);
+        self.input.input_width = self.uilayout.statusline_width;
         self.update_table_data();
     }
 
@@ -612,7 +642,7 @@ impl Model {
             self.update_table_data();
         }
 
-        trace!("Update: Modus {:?}, Message {:?}", self.modus, message);
+        //trace!("Update: Modus {:?}, Message {:?}", self.modus, message);
         if let Some(msg) = message {
             match self.modus {
                 Modus::TABLE => {
@@ -633,8 +663,10 @@ impl Model {
                         Message::CopyCell => self.copy_table_cell(),
                         Message::CopyRow => self.copy_table_row(),
                         Message::Help => self.show_help(),
+                        Message::EnterCommand => self.enter_cmd_mode(),
                         Message::Enter => self.enter(),
                         Message::Exit => self.exit(),
+                        _ => (),
                     }
                 },
                 Modus::RECORD => {
@@ -646,42 +678,28 @@ impl Model {
                         Message::MoveUp => self.move_record_selection_up(1),
                         Message::MovePageUp => self.move_record_selection_up(10),
                         Message::MovePageDown => self.move_record_selection_down(10),
-                        Message::MoveBeginning => (),
-                        Message::MoveEnd => (),
-                        Message::GrowColumn => (),
-                        Message::ShrinkColumn => (),
-                        Message::ToggleIndex => (),
                         Message::Resize(width, height) => self.ui_resize(width, height),
                         Message::CopyCell => self.copy_record_cell(),
-                        Message::CopyRow => (),
                         Message::Help => self.show_help(),
                         Message::Enter => self.enter(),
                         Message::Exit => self.exit(),
+                        _ => (),
                     }
                 },
                 Modus::POPUP => {
                     match msg {
                         Message::Quit => self.quit(),
-                        Message::MoveDown => (),
-                        Message::MoveLeft => (),
-                        Message::MoveRight => (),
-                        Message::MoveUp => (),
-                        Message::MovePageUp => (),
-                        Message::MovePageDown => (),
-                        Message::MoveBeginning => (),
-                        Message::MoveEnd => (),
-                        Message::GrowColumn => (),
-                        Message::ShrinkColumn => (),
-                        Message::ToggleIndex => (),
                         Message::Resize(width, height) => self.ui_resize(width, height),
-                        Message::CopyCell => (),
-                        Message::CopyRow => (),
-                        Message::Help => (),
-                        Message::Enter => (),
                         Message::Exit => self.exit(),
+                        _ => (),
                     }
                 },
- 
+                Modus::CMDINPUT => {
+                    match msg {
+                        Message::RawKey(key) => self.raw_input(key),
+                        _ => (),
+                    }
+                },
             }
        }
 
@@ -706,10 +724,9 @@ impl Model {
                 self.modus = Modus::RECORD;
                 self.previous_modus = Modus::TABLE;
             },
-            Modus::RECORD =>  {
-                // Nothing to do here, we can not go into a single cell yet
-            },
+            Modus::RECORD =>  {},
             Modus::POPUP => {},
+            Modus::CMDINPUT => {},
         }
     }
 
@@ -736,6 +753,7 @@ impl Model {
                     Modus::POPUP => (),
                 }*/
             }
+            Modus::CMDINPUT => {},
         }
  
     }
@@ -746,6 +764,44 @@ impl Model {
         self.uidata.popup_message = HELP_TEXT.to_string();
         self.uidata.show_popup = true;
         self.uidata.last_update = Instant::now();
+    }
+
+    fn raw_input(&mut self, key: KeyEvent) {
+        if self.active_cmdinput {
+            self.last_input = self.input.read(key);
+            if self.last_input.finished {
+                self.handle_cmd_input();
+            }
+            self.uidata.cmdinput = self.last_input.clone();
+            self.uidata.last_update = Instant::now();
+        }
+    }
+
+    fn enter_cmd_mode(&mut self) {
+        trace!("Entering command mode ...");
+        self.previous_modus = self.modus;
+        self.modus = Modus::CMDINPUT;
+
+        self.active_cmdinput = true;
+        self.last_input = InputResult::default();
+
+        self.uidata.cmdinput = self.last_input.clone();
+        self.uidata.active_cmdinput = self.active_cmdinput;
+        self.uidata.last_update = Instant::now();
+    }
+
+    fn handle_cmd_input(&mut self) {
+        // TODO: process self.last_input
+        trace!("Handle cmd input {}", self.last_input.input);
+
+
+        self.active_cmdinput = false;
+        self.modus = self.previous_modus;
+        self.previous_modus = Modus::CMDINPUT;
+
+        self.uidata.active_cmdinput = self.active_cmdinput;
+        self.last_update = Instant::now();
+ 
     }
 
     fn toggle_table_index(&mut self) {
