@@ -1,9 +1,8 @@
 
-use ratatui::layout::{Constraint, Layout, Margin};
+use ratatui::layout::{Constraint, Layout, Margin, Position};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell, Paragraph};
 use ratatui::{Frame, layout::Rect};
-use ratatui::text::{Line, Span, Text};
 use tracing::{warn, trace};
 use std::time::Instant;
 
@@ -206,7 +205,7 @@ impl TableUI {
         }
         // Fill up the rest of the table with empty strings to have the empty part of the table render with the same style.
         for _ in nrows..data.layout.table_height {
-            rows.push(Row::new(vec![""].repeat(columns.len())).style(self.styles.row));
+            rows.push(Row::new([""].repeat(columns.len())).style(self.styles.row));
         }
         let widths = columns.iter().map(|c| Constraint::Length(c.width as u16)).collect::<Vec<Constraint>>();
 
@@ -233,12 +232,13 @@ impl TableUI {
     }
 
     fn render_statusline(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
+        let mut render_curser = false; 
         let right = format!("{}/{}", data.abs_selected_row + 1, data.nrows);
-
         let left = if data.active_cmdinput {
-            format!(":{}", data.cmdinput.input)
+            render_curser = true;
+            format!(">{}", data.cmdinput.input)
         } else {
-            format!("{}", data.name)
+            data.name.to_string()
         };
         
         // Use chars().count() instead of .len() to handle multi-byte characters correctly in TUI
@@ -257,5 +257,10 @@ impl TableUI {
             .style(self.styles.statusline);
             
         frame.render_widget(status_bar, area);
+
+        if render_curser {
+            let curser_pos = Position::new(area.x + data.cmdinput.curser_pos as u16 + 1, area.y);
+            frame.set_cursor_position(curser_pos);
+        }
     }
 }

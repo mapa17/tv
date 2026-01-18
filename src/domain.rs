@@ -54,6 +54,7 @@ pub enum Message {
     CopyRow,
     Help,
     EnterCommand,
+    Find,
     Enter,
     Exit,
     Quit,

@@ -1,12 +1,13 @@
-use tracing::trace;
 
 use ratatui::crossterm::event::{self, KeyCode, KeyModifiers};
 
 #[derive(Default)]
 pub struct Inputter {
-    pub current_input: String,
-    pub curser_pos: usize,
-    pub input_width: usize,
+    current_input: String,
+    curser_pos: usize,
+    input_width: usize,
+    finished: bool,
+    canceled: bool,
 }
 
 #[derive(Default, Clone)]
@@ -29,26 +30,41 @@ impl Inputter {
         }
     }
 
-    fn enter(&mut self) -> InputResult {
-        let input = self.current_input.clone();
-        self.current_input.clear();
+    pub fn set(&mut self, s: &str) {
+        self.current_input.push_str(s);
+        self.curser_pos += s.to_ascii_lowercase().len();
+    }
+
+    pub fn get(&self) -> InputResult {
         InputResult {
-            canceled: false,
-            finished: true,
-            input: input,
-            curser_pos: 0,
+            canceled: self.canceled,
+            finished: self.finished,
+            input: self.current_input.clone(),
+            curser_pos: self.curser_pos,
         }
     }
 
-    fn escape(&mut self) -> InputResult {
-        let input = self.current_input.clone();
+    pub fn set_width(&mut self, width: usize) {
+        self.input_width = width;
+    }
+
+    pub fn clear(&mut self) {
+        self.canceled = false;
+        self.finished = false;
         self.current_input.clear();
-        InputResult {
-            canceled: true,
-            finished: true,
-            input: String::new(),
-            curser_pos: 0,
-        }
+        self.curser_pos = 0;
+    }
+
+    fn enter(&mut self) -> InputResult {
+        self.finished = true;
+        self.get()
+    }
+
+    fn escape(&mut self) -> InputResult {
+        self.clear();
+        self.canceled = true;
+        self.finished = true;
+        self.get()
     }
 
     fn backspace(&mut self) -> InputResult {
@@ -63,16 +79,11 @@ impl Inputter {
         InputResult::default()
     }
 
-    fn key(&mut self, code: KeyCode, modifier: KeyModifiers) -> InputResult {
+    fn key(&mut self, code: KeyCode, _modifier: KeyModifiers) -> InputResult {
         if let Some(chr) = code.as_char() {
             self.current_input.push(chr);
             self.curser_pos +=1;
         }
-        InputResult {
-            canceled: false,
-            finished: false,
-            input: self.current_input.clone(),
-            curser_pos: self.curser_pos,
-        }
+        self.get()
     }
 }

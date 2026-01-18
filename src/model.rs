@@ -633,7 +633,7 @@ impl Model {
             self.uilayout.height, height
         );
         self.uilayout = UILayout::from_model(self, width, height);
-        self.input.input_width = self.uilayout.statusline_width;
+        self.input.set_width(self.uilayout.statusline_width);
         self.update_table_data();
     }
 
@@ -663,7 +663,8 @@ impl Model {
                         Message::CopyCell => self.copy_table_cell(),
                         Message::CopyRow => self.copy_table_row(),
                         Message::Help => self.show_help(),
-                        Message::EnterCommand => self.enter_cmd_mode(),
+                        Message::EnterCommand => self.enter_cmd_mode(""),
+                        Message::Find => self.enter_cmd_mode("/"),
                         Message::Enter => self.enter(),
                         Message::Exit => self.exit(),
                         _ => (),
@@ -695,10 +696,7 @@ impl Model {
                     }
                 },
                 Modus::CMDINPUT => {
-                    match msg {
-                        Message::RawKey(key) => self.raw_input(key),
-                        _ => (),
-                    }
+                    if let Message::RawKey(key) = msg { self.raw_input(key) }
                 },
             }
        }
@@ -777,14 +775,17 @@ impl Model {
         }
     }
 
-    fn enter_cmd_mode(&mut self) {
+    fn enter_cmd_mode(&mut self, prefix: &str) {
         trace!("Entering command mode ...");
         self.previous_modus = self.modus;
         self.modus = Modus::CMDINPUT;
 
         self.active_cmdinput = true;
-        self.last_input = InputResult::default();
+        self.input.clear();
+        self.last_input = self.input.get();
+        self.input.set(prefix);
 
+        self.last_input = self.input.get();
         self.uidata.cmdinput = self.last_input.clone();
         self.uidata.active_cmdinput = self.active_cmdinput;
         self.uidata.last_update = Instant::now();
@@ -794,14 +795,39 @@ impl Model {
         // TODO: process self.last_input
         trace!("Handle cmd input {}", self.last_input.input);
 
-
         self.active_cmdinput = false;
         self.modus = self.previous_modus;
         self.previous_modus = Modus::CMDINPUT;
 
         self.uidata.active_cmdinput = self.active_cmdinput;
         self.last_update = Instant::now();
- 
+
+        let cmd = self.last_input.input.clone();
+        match cmd.as_str() {
+            s if s.starts_with('/') => {
+                let search_term = &s[1..]; // Skip the '/'
+                self.search(search_term);
+            }
+            s if s.starts_with('|') => {
+                let filter_term = &s[1..];
+                self.filter(filter_term);
+            }
+            s if s.starts_with(':') => {
+                let cmd_term = &s[1..];
+                //self.filter(cmd_term);
+            }
+            _ => trace!("Unknown command"),
+        }
+
+    }
+
+    fn search(&mut self, term: &str) {
+        trace!("Starting search for {} ...", term);
+
+    }
+
+    fn filter(&mut self, term: &str) {
+        trace!("Starting filter for {} ...", term);
     }
 
     fn toggle_table_index(&mut self) {

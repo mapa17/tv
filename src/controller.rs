@@ -54,6 +54,7 @@ impl Controller {
             (KeyCode::Char('Y'), KeyModifiers::SHIFT) => Some(Message::CopyRow),
             (KeyCode::Char('?'), KeyModifiers::NONE) => Some(Message::Help),
             (KeyCode::Char(':'), KeyModifiers::NONE) => Some(Message::EnterCommand),
+            (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Message::Find),
             (KeyCode::Enter, KeyModifiers::NONE) => Some(Message::Enter),
             (KeyCode::Esc, KeyModifiers::NONE) => Some(Message::Exit),
             _ => None,
