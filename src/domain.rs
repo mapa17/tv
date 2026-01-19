@@ -58,6 +58,8 @@ pub enum Message {
     Enter,
     Exit,
     Quit,
+    SearchNext,
+    SearchPrev,
     RawKey(event::KeyEvent),
 }
 

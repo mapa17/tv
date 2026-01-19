@@ -1,4 +1,5 @@
 
+use polars::time::Duration;
 use ratatui::layout::{Constraint, Layout, Margin, Position};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell, Paragraph};
@@ -16,6 +17,7 @@ pub const TABLE_HEADER_HEIGHT: usize = 1;
 //pub const RECORD_HEADER_HEIGHT: usize = 1;
 pub const CMDLINE_HEIGH: usize = 1;
 pub const POPUP_MARGIN: usize = 3;
+pub const STATUS_MESSAGE_DISPLAY_DURATION:std::time::Duration = std::time::Duration::new(2, 0);
 
 
 #[derive(Clone)]
@@ -209,7 +211,7 @@ impl TableUI {
         }
         let widths = columns.iter().map(|c| Constraint::Length(c.width as u16)).collect::<Vec<Constraint>>();
 
-        trace!("num rows: {}, nrows {}", rows.len(), nrows);
+        //trace!("num rows: {}, nrows {}", rows.len(), nrows);
         let header = Row::new(columns.iter().map(|c| Cell::from(c.name.clone())).collect::<Vec<Cell>>())
             .style(self.styles.header);
         
@@ -238,7 +240,11 @@ impl TableUI {
             render_curser = true;
             format!(">{}", data.cmdinput.input)
         } else {
-            data.name.to_string()
+            if (data.last_status_message_update + STATUS_MESSAGE_DISPLAY_DURATION) - Instant::now() > std::time::Duration::ZERO {
+                data.status_message.clone()
+            } else {
+                data.name.to_string()
+            }
         };
         
         // Use chars().count() instead of .len() to handle multi-byte characters correctly in TUI

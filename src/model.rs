@@ -99,7 +99,7 @@ enum Modus{
 pub struct TableView {
     name: String,
     data_idx: usize, // Dataset index
-    rows: Vec<usize>, // Mapping of TableView row index to data index
+    rows: Arc<Vec<usize>>, // Mapping of TableView row index to data index. Wrap in arc to allow multi threaded access
     visible_columns: Vec<usize>, // Idx of visible columns that are send to the UI for rendering.
     visible_width: usize,
     curser_row: usize,
@@ -107,6 +107,8 @@ pub struct TableView {
     offset_row: usize,
     offset_column: usize,
     data: Vec<ColumnView>,
+    search_results: Vec<(usize, usize)>,
+    search_idx: usize,
     show_index: bool,
     index: ColumnView,
     heigh: usize,
@@ -118,7 +120,7 @@ impl TableView {
         TableView {
             name: String::new(),
             data_idx: 0,
-            rows: Vec::new(),
+            rows: Arc::new(Vec::new()),
             visible_columns: Vec::new(),
             visible_width: 0,
             curser_column: 0,
@@ -126,6 +128,8 @@ impl TableView {
             offset_column: 0,
             offset_row: 0,
             data: Vec::new(),
+            search_results: Vec::new(),
+            search_idx: 0,
             show_index: false,
             index: ColumnView::empty(),
             heigh: 0,
@@ -194,6 +198,8 @@ pub struct UIData {
     pub last_update: Instant,
     pub cmdinput: InputResult,
     pub active_cmdinput: bool,
+    pub status_message: String,
+    pub last_status_message_update: Instant,
 }
 
 impl UIData {
@@ -212,6 +218,8 @@ impl UIData {
             last_update: Instant::now(),
             cmdinput: InputResult::default(),
             active_cmdinput: false,
+            status_message: String::new(),
+            last_status_message_update: Instant::now(),
         }
     }
 }
@@ -279,6 +287,8 @@ pub struct Model {
     input: Inputter,
     last_input: InputResult,
     active_cmdinput: bool,
+    status_message: String,
+    last_status_message_update: Instant,
 }
 
 impl Model {
@@ -313,7 +323,7 @@ impl Model {
         let ui_size = UILayout::default();
         let mut table = TableView::empty();
         // set default row mapping
-        table.rows = (0..columns[0].data.len()).collect();
+        table.rows = Arc::new((0..columns[0].data.len()).collect());
         table.name = file_info.path.file_name().and_then(|s| s.to_str()).unwrap_or("???").to_string();
 
         Ok(
@@ -335,6 +345,8 @@ impl Model {
                 input: Inputter::default(),
                 last_input: InputResult::default(),
                 active_cmdinput: false,
+                status_message: "Loading file ...".to_string(),
+                last_status_message_update: Instant::now(),
             })
     }
 
@@ -356,6 +368,8 @@ impl Model {
             cmdinput: self.last_input.clone(),
             active_cmdinput: self.active_cmdinput,
             last_update: Instant::now(),
+            status_message: self.status_message.clone(),
+            last_status_message_update: self.last_status_message_update,
         }
     }
 
@@ -376,6 +390,8 @@ impl Model {
             cmdinput: self.last_input.clone(),
             active_cmdinput: self.active_cmdinput,
             last_update: Instant::now(),
+            status_message: self.status_message.clone(),
+            last_status_message_update: self.last_status_message_update,
         }
     }
 
@@ -392,6 +408,13 @@ impl Model {
         }
     }
 
+    fn set_status_message(&mut self, message: impl Into<String>) {
+        self.status_message = message.into();
+        self.last_status_message_update = Instant::now();
+        self.uidata.status_message = self.status_message.clone();
+        self.uidata.last_status_message_update = self.last_status_message_update;
+        self.uidata.last_update = Instant::now();
+    }
 
     pub fn get_uidata(&self) -> &UIData {
         &self.uidata
@@ -667,6 +690,8 @@ impl Model {
                         Message::Find => self.enter_cmd_mode("/"),
                         Message::Enter => self.enter(),
                         Message::Exit => self.exit(),
+                        Message::SearchNext => self.search_next(1),
+                        Message::SearchPrev => self.search_next(-1),
                         _ => (),
                     }
                 },
@@ -813,7 +838,7 @@ impl Model {
                 self.filter(filter_term);
             }
             s if s.starts_with(':') => {
-                let cmd_term = &s[1..];
+                let _cmd_term = &s[1..];
                 //self.filter(cmd_term);
             }
             _ => trace!("Unknown command"),
@@ -821,9 +846,114 @@ impl Model {
 
     }
 
+    fn search_column(term: &str, column: &Column, mask: &[usize]) -> Vec<usize> {
+        mask.iter()
+            .filter(|&&row_idx| column.data[row_idx].contains(term))
+            .copied()
+            .collect()
+        
+    }
+
     fn search(&mut self, term: &str) {
         trace!("Starting search for {} ...", term);
+        let table = &mut self.tables[self.current_table];
+        let data = &self.data[table.data_idx];
+        let start_time = Instant::now();
 
+        let mask = Arc::clone(&table.rows);
+        let search_term = term.to_string();
+        let columns = Arc::new(data);
+        let matching_rows: Vec<(usize, usize)> = columns
+            .par_iter()
+            .enumerate()
+            .flat_map(|(col_idx, column)| {
+                Self::search_column(&search_term, column, &mask)
+                    .into_iter()
+                    .map(move |row_idx| (row_idx, col_idx))
+                    .collect::<Vec<_>>()
+            } )
+            .collect();
+
+        let search_duration = start_time.elapsed().as_millis();
+
+
+        // Sort by rows 
+        table.search_results = matching_rows.into_iter().collect();
+        table.search_results.sort_unstable();
+        // Set the search index to the first match that is after the cursor
+        table.search_idx = table.search_results.iter().position(|&(row, _col)| row >= table.offset_row + table.curser_row).unwrap_or(0);
+
+        trace!("Search found {} matching rows in {}ms", 
+            table.search_results.len(), 
+            search_duration
+        );
+
+        trace!("Matches {:?}", table.search_results);
+
+        self.search_next(0);
+
+        let table = &self.tables[self.current_table];
+        self.set_status_message(format!("Found {} results", table.search_results.len()));
+    }
+
+    fn search_next(&mut self, step: i32) {
+        // Note: step has to be -1, 0, 1
+        let mut next_match: Option<(usize, usize)> = None;
+        let mut next_match_idx = 0;
+        let table = &mut self.tables[self.current_table];
+        let total_matches = table.search_results.len();
+        if total_matches > 0 {
+            if step >= 0 {
+                let s = step as usize;
+                if table.search_idx + s >= total_matches {
+                    table.search_idx = 0;
+                } else {
+                    table.search_idx += s;
+                }
+            } else {
+                if table.search_idx as i32 + step < 0 {
+                    table.search_idx = table.search_results.len()-1;
+                } else {
+                    table.search_idx = (table.search_idx as i32 + step) as usize;
+                }
+           }
+            next_match = Some((table.search_results[table.search_idx].0, table.search_results[table.search_idx].1)); 
+            next_match_idx = table.search_idx;
+        }
+
+        match next_match {
+            Some((row, column)) => {
+                self.select_cell(row, column);
+                self.set_status_message(format!("Search result {}/{}", next_match_idx+1, total_matches));
+                trace!("Selecting next search result {}/{}, pos {}:{}",
+                    next_match_idx+1, total_matches,
+                    row, column
+                );
+            },
+            _ => (),
+        }
+   }
+
+    fn select_cell(&mut self, row: usize, column: usize) {
+        let table = &mut self.tables[self.current_table];
+        trace!("Select record {}:{}", row, column);
+
+        // If relevant column is already visible, only select the right row, otherwise move the view.
+        if table.visible_columns.contains(&column) {
+            table.curser_column = table.visible_columns.iter().position(|&c| c == column).unwrap_or(0);
+        } else {
+            table.offset_column = column;
+            table.curser_column = 0;
+        } 
+
+        if row >= table.offset_row && row < table.offset_row+table.heigh {
+            table.curser_row = row-table.offset_row;
+        } else {
+            table.curser_row = 0;
+            table.offset_row = row;
+        }
+
+        self.update_table_data();
     }
 
     fn filter(&mut self, term: &str) {

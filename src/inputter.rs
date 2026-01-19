@@ -31,7 +31,7 @@ impl Inputter {
     }
 
     pub fn set(&mut self, s: &str) {
-        self.current_input.push_str(s);
+        self.current_input = s.to_string();
         self.curser_pos += s.to_ascii_lowercase().len();
     }
 
@@ -68,20 +68,28 @@ impl Inputter {
     }
 
     fn backspace(&mut self) -> InputResult {
-        InputResult::default()
+        if self.curser_pos > 0 {
+            self.current_input.pop();
+            self.curser_pos -= 1;
+        }
+        self.get()
     }
 
     fn left(&mut self) -> InputResult {
-        InputResult::default()
+        self.curser_pos = self.curser_pos.saturating_sub(1);
+        self.get()
     }
 
     fn right(&mut self) -> InputResult {
-        InputResult::default()
+        if self.curser_pos+1 <= self.current_input.len() {
+            self.curser_pos += 1;
+        }
+        self.get()
     }
 
     fn key(&mut self, code: KeyCode, _modifier: KeyModifiers) -> InputResult {
         if let Some(chr) = code.as_char() {
-            self.current_input.push(chr);
+            self.current_input.insert(self.curser_pos,chr);
             self.curser_pos +=1;
         }
         self.get()
