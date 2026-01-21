@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::hash::Hash;
 use std::path::{PathBuf, Path};
 use std::fs;
 use std::io::ErrorKind;
@@ -21,6 +20,7 @@ enum FileType {
     CSV,
     PARQUET,
     XLSX,
+    ARROW,
 }
 
 // A struct with different types
@@ -279,7 +279,7 @@ pub struct UILayout {
 
 impl UILayout {
     pub fn from_model(model: &Model, ui_width: usize, ui_height: usize) -> Self {
-        let table = &model.tables[model.current_table];
+        let table = model.tables.last().unwrap();
         let mut index_width = 0;
         if table.show_index {
             index_width = table.index.width;
@@ -320,7 +320,7 @@ pub struct Model {
     tables: Vec<TableView>,
     record_view: RecordView,
     histogram_view: HistogramView,
-    current_table: usize,
+    //current_table: usize,
     last_update: Instant,
     last_data_change: Instant,
     uilayout: UILayout,
@@ -338,8 +338,9 @@ impl Model {
         let file_info = Model::get_file_info(path)?;
         let frame = match file_info.file_type {
             FileType::CSV => Model::load_csv(&file_info.path)?,
-            FileType::PARQUET => todo!(),
+            FileType::PARQUET => Model::load_parquet(&file_info.path)?,
             FileType::XLSX => todo!(),
+            FileType::ARROW => Model::load_arrow(&file_info.path)?,
         };
 
         // Load dataframe using rayon with data parallelism.
@@ -379,7 +380,7 @@ impl Model {
                 tables: vec![table],
                 record_view: RecordView::empty(),
                 histogram_view: HistogramView::empty(),
-                current_table: 0,
+                //current_table: 0,
                 last_update: Instant::now() - std::time::Duration::from_secs(1),
                 last_data_change: Instant::now(),
                 uilayout: ui_size,
@@ -394,10 +395,10 @@ impl Model {
     }
 
     fn update_uidata_for_record(&mut self) {
-        let table = &mut self.tables[self.current_table];
+        let table = &mut self.tables.last().unwrap();
         let record = &self.record_view;
         self.uidata = UIData {
-            name: table.name.clone(),
+            name: format!("R[{}]", table.name),
             table: vec![record.header_view.clone(), record.row_view.clone()],
             index: table.index.clone(), 
             //#nrows: record.row_view.data.len(),
@@ -417,7 +418,7 @@ impl Model {
     }
 
     fn update_uidata_for_table(&mut self) {
-        let table = &mut self.tables[self.current_table];
+        let table = &mut self.tables.last().unwrap();
 
         self.uidata = UIData {
             name: table.name.clone(),
@@ -445,8 +446,9 @@ impl Model {
             .as_deref()
         {
             Some("CSV") => Ok(FileType::CSV),
-            Some("PARQUET") => Ok(FileType::PARQUET),
+            Some("PARQUET") | Some("PQ") => Ok(FileType::PARQUET),
             Some("XLSX") => Ok(FileType::XLSX),
+            Some("ARROW") | Some("IPC") | Some("FEATHER") => Ok(FileType::ARROW),
             _ => Err(TVError::UnknownFileType),
         }
     }
@@ -470,7 +472,7 @@ impl Model {
 
     fn calculate_column_histogram(&mut self, column_idx: usize) {
         trace!("Calculate histogram for column {}", column_idx);
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         if !table.column_histograms.contains_key(&column_idx) {
             let columns = &self.data[table.data_idx];
             let column_data = &columns[column_idx].data;
@@ -480,7 +482,7 @@ impl Model {
                 *counts.entry(column_data[ridx].clone()).or_insert(0) += 1;
 
             }
-            let mut sorted: Vec<(usize, String)> = counts.iter().map(|(k, v)| (v.clone(), k.clone())).collect();
+            let mut sorted: Vec<(usize, String)> = counts.iter().map(|(k, v)| (*v, k.clone())).collect();
             sorted.sort_unstable();
             sorted.reverse();
             let (counts, values): (Vec<usize>, Vec<String>) = sorted.into_iter().unzip(); 
@@ -491,17 +493,15 @@ impl Model {
     fn build_histogram_view(&mut self) {
         self.modus = Modus::HISTOGRAM;
         let current_column = {
-            let table = &self.tables[self.current_table];
+            let table = self.tables.last().unwrap();
             table.offset_column + table.curser_column
         }; 
         self.calculate_column_histogram(current_column);
 
         // Disable rendering of index
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         table.show_index = false;
-        let table = &self.tables[self.current_table];
-        // Disabling the index will change the ui layout. Recalculate it
-        self.uilayout = UILayout::from_model(self, self.uilayout.width, self.uilayout.height);
+        let table = self.tables.last().unwrap();
 
         // Update histogram data
         let counts = &table.column_histograms[&current_column]; 
@@ -509,7 +509,7 @@ impl Model {
         hist.curser_offset = 0;
         hist.curser_row = 0;
         hist.column_idx = current_column;
-        hist.table_idx = self.current_table;
+        //hist.table_idx = self.current_table;
         hist.height = table.heigh;
         hist.width = table.width; 
 
@@ -521,6 +521,7 @@ impl Model {
     }
 
     fn update_histogram_view(&mut self) {
+        self.uilayout = UILayout::from_model(self, self.uilayout.width, self.uilayout.height);
         let hist = &mut self.histogram_view;
         let rbegin = hist.curser_offset;
         let rend = std::cmp::min(rbegin + hist.height, hist.value_data.len()); 
@@ -545,8 +546,9 @@ impl Model {
     fn update_uidata_for_histogram(&mut self) {
         let hist = &self.histogram_view;
         let uidata = &mut self.uidata;
+        let table = self.tables.last().unwrap();
 
-        uidata.name = format!("Column Histogram");
+        uidata.name = format!("H[{}]", table.name);
         uidata.table = vec![hist.count_view.clone(), hist.value_view.clone()];
         uidata.selected_column = 1;
         uidata.nrows = hist.value_data.len();
@@ -555,9 +557,9 @@ impl Model {
         uidata.last_update = Instant::now();
     }
 
-    fn build_record_view(&mut self, record_idx: usize, table_idx: usize) {
+    fn build_record_view(&mut self, record_idx: usize) {
         trace!("Building record view ...");
-        let table = &self.tables[self.current_table];
+        let table = self.tables.last().unwrap();
         let columns = &self.data[table.data_idx];
         let record = &mut self.record_view;
         // Get header names 
@@ -567,7 +569,7 @@ impl Model {
         record.curser_offset = 0;
         record.curser_row = 0;
         record.record_idx = record_idx;
-        record.table_idx = table_idx;
+        //record.table_idx = table_idx;
         record.height = table.heigh;
         record.width = table.width; 
 
@@ -578,7 +580,7 @@ impl Model {
     }
 
     fn update_record_data(&mut self) {
-        let table = &self.tables[self.current_table];
+        let table = self.tables.last().unwrap();
         let columns = &self.data[table.data_idx];
         let record = &mut self.record_view;
 
@@ -605,7 +607,7 @@ impl Model {
     }
 
     fn update_table_data(&mut self) {
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         let columns = &mut self.data[table.data_idx];
 
         table.width = self.uilayout.table_width;
@@ -767,9 +769,13 @@ impl Model {
         LazyCsvReader::new(PlPath::Local(path.as_path().into())).with_has_header(true).finish()
     }
 
-    // pub fn get_path(&self) -> PathBuf {
-    //     self.file_info.path.clone()
-    // }
+    fn load_parquet(path: &PathBuf) -> Result<LazyFrame, PolarsError> {
+        LazyFrame::scan_parquet(PlPath::Local(path.as_path().into()), ScanArgsParquet::default())
+    }
+
+    fn load_arrow(path: &PathBuf) -> Result<LazyFrame, PolarsError> {
+        LazyFrame::scan_ipc(PlPath::Local(path.as_path().into()), polars::io::ipc::IpcScanOptions::default(), UnifiedScanArgs::default())
+    }
 
     pub fn raw_keyevents(&self) -> bool {
         self.active_cmdinput
@@ -786,7 +792,14 @@ impl Model {
         );
         self.uilayout = UILayout::from_model(self, width, height);
         self.input.set_width(self.uilayout.statusline_width);
-        self.update_table_data();
+        match self.modus {
+            Modus::TABLE => {self.update_table_data()},
+            Modus::RECORD => {self.update_record_data()},
+            Modus::HISTOGRAM => {self.update_histogram_view()},
+            Modus::POPUP => {},
+            Modus::CMDINPUT => {},
+        }
+        
     }
 
     pub fn update(&mut self, message: Option<Message>) -> Result<(), TVError> {
@@ -825,14 +838,15 @@ impl Model {
                         Message::SearchPrev => self.search_next(-1),
                         Message::MoveToFirstColumn => {
                             self.select_cell(
-                                self.tables[self.current_table].curser_row + self.tables[self.current_table].offset_row,
+                                self.tables.last().unwrap().curser_row + self.tables.last().unwrap().offset_row,
                                 0
                             );
                         },
                         Message::MoveToLastColumn => {
+                            let table = self.tables.last().unwrap();
                             self.select_cell(
-                                self.tables[self.current_table].curser_row + self.tables[self.current_table].offset_row,
-                                self.data[self.tables[self.current_table].data_idx].len()-1
+                                table.curser_row + table.offset_row,
+                                self.data[table.data_idx].len()-1
                             );
                         },
                         _ => (),
@@ -898,19 +912,25 @@ impl Model {
         match self.modus {
             Modus::TABLE => {
                 let record_idx = {
-                    let table = &mut self.tables[self.current_table];
+                    let table = self.tables.last_mut().unwrap();
                     table.show_index = false;
                     table.offset_row + table.curser_row
                 };
                 // Disabling the index will change the ui layout. Recalculate it
                 self.uilayout = UILayout::from_model(self, self.uilayout.width, self.uilayout.height);
-                self.build_record_view(record_idx, self.current_table);
+                self.build_record_view(record_idx);
                 self.modus = Modus::RECORD;
                 self.previous_modus = Modus::TABLE;
             },
             Modus::RECORD =>  {},
             Modus::HISTOGRAM =>  {
-                // TODO: when pressing enter in the histogram, apply filtering of tableview based on selected value
+                let hist = &self.histogram_view;
+                let table = self.tables.last().unwrap();
+                let term = hist.value_data[hist.curser_offset + hist.curser_row].clone();
+                let matches = Self::search_column(&term, &self.data[table.data_idx][hist.column_idx], &table.rows);
+                self.filter_table(matches);
+                self.modus = Modus::TABLE;
+                self.previous_modus = Modus::HISTOGRAM;
             },
             Modus::POPUP => {},
             Modus::CMDINPUT => {},
@@ -921,6 +941,10 @@ impl Model {
         match self.modus {
             Modus::TABLE => {
                 // Nothing todo, there is no exit from table, only quit
+                if self.tables.len() > 1 {
+                    self.tables.pop();
+                    self.update_table_data();
+                }
             },
             Modus::RECORD =>  {
                 // Switch back to table mode
@@ -1021,7 +1045,7 @@ impl Model {
 
     fn search(&mut self, term: &str) {
         trace!("Starting search for {} ...", term);
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         let data = &self.data[table.data_idx];
         let start_time = Instant::now();
 
@@ -1057,7 +1081,7 @@ impl Model {
 
         self.search_next(0);
 
-        let table = &self.tables[self.current_table];
+        let table = self.tables.last().unwrap();
         self.set_status_message(format!("Found {} results", table.search_results.len()));
     }
 
@@ -1065,7 +1089,7 @@ impl Model {
         // Note: step has to be -1, 0, 1
         let mut next_match: Option<(usize, usize)> = None;
         let mut next_match_idx = 0;
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         let total_matches = table.search_results.len();
         if total_matches > 0 {
             if step >= 0 {
@@ -1095,7 +1119,7 @@ impl Model {
    }
 
     fn select_cell(&mut self, row: usize, column: usize) {
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         trace!("Select record {}:{}", row, column);
 
         // If relevant column is already visible, only select the right row, otherwise move the view.
@@ -1118,12 +1142,10 @@ impl Model {
 
     fn filter(&mut self, term: &str) {
         trace!("Starting filter for {} ...", term);
-
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         let data = &self.data[table.data_idx];
         let start_time = Instant::now();
 
-        
         let matches = Self::search_column(term, &data[table.offset_column + table.curser_column], &table.rows);
  
         let search_duration = start_time.elapsed().as_millis();
@@ -1138,15 +1160,14 @@ impl Model {
 
     fn filter_table(&mut self, indices: Vec<usize>) {
         let mut new_table = TableView::empty();
-        // set default row mapping
+        new_table.name = format!("F[{}]", self.tables.last().unwrap().name);
         new_table.rows = Arc::new(indices.clone());
         self.tables.push(new_table);
-        self.current_table += 1;
         self.update_table_data();
     }
 
     fn toggle_table_index(&mut self) {
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         table.show_index = !table.show_index;
 
         // Update ui layout and the underlying data
@@ -1155,7 +1176,7 @@ impl Model {
     }
 
     fn copy_table_cell(&mut self) {
-        let table = &self.tables[self.current_table];
+        let table = self.tables.last().unwrap();
         let cell = self.uidata.table[table.curser_column].data[table.curser_row].clone();
         trace!("Cell content: {}", cell);
 
@@ -1166,7 +1187,7 @@ impl Model {
     }
 
     fn copy_table_row(&mut self) {
-        let table = &self.tables[self.current_table];
+        let table = self.tables.last().unwrap();
         let row = table.offset_row + table.curser_row;
 
         let columns = &self.data[table.data_idx]; 
@@ -1182,7 +1203,7 @@ impl Model {
     }
  
     fn grow_table_selected_column(&mut self) {
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         let new_status = match self.data[table.data_idx][table.visible_columns[table.curser_column]].status {
             ColumnStatus::COLLAPSED => ColumnStatus::NORMAL,
             ColumnStatus::NORMAL => ColumnStatus::EXPANDED,
@@ -1193,7 +1214,7 @@ impl Model {
     }
 
     fn shrink_table_selected_column(&mut self) {
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         let new_status = match self.data[table.data_idx][table.visible_columns[table.curser_column]].status {
             ColumnStatus::COLLAPSED => ColumnStatus::COLLAPSED,
             ColumnStatus::NORMAL => ColumnStatus::COLLAPSED,
@@ -1204,14 +1225,14 @@ impl Model {
     }
 
     fn move_table_selection_beginning(&mut self) {
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         table.curser_row = 0;
         table.offset_row = 0;
         self.update_table_data();
     }
 
     fn move_table_selection_end(&mut self) {
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         if table.rows.len() < self.uilayout.table_height {
             table.offset_row = 0;
             table.curser_row = table.rows.len()-1;
@@ -1223,8 +1244,7 @@ impl Model {
     }
 
     fn move_table_selection_up(&mut self, size: usize) {
-
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         if table.curser_row > 0 {
             // Curser somewhere in the middle
             table.curser_row = table.curser_row.saturating_sub(size);
@@ -1239,7 +1259,7 @@ impl Model {
     }
 
     fn move_table_selection_down(&mut self, size: usize) {
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         if table.curser_row + table.offset_row < (table.rows.len()-1) {
             // Somewhere in the Frame
             if table.curser_row < self.uilayout.table_height-1 {
@@ -1255,7 +1275,7 @@ impl Model {
     }
 
     fn move_table_selection_left(&mut self) {
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
         if table.curser_column > 0 {
             table.curser_column = table.curser_column.saturating_sub(1);
         } else if table.offset_column > 0 {
@@ -1265,7 +1285,7 @@ impl Model {
     }
 
     fn move_table_selection_right(&mut self) {
-        let table = &mut self.tables[self.current_table];
+        let table = self.tables.last_mut().unwrap();
 
         if table.curser_column + table.offset_column < (self.data[table.data_idx].len()-1){
             // Somewhere before the last column
@@ -1371,7 +1391,7 @@ impl Model {
 
     fn next_record(&mut self) {
         let record = &mut self.record_view;
-        let table = &self.tables[self.current_table];
+        let table = self.tables.last().unwrap();
         if record.record_idx < table.rows.len()-1 {
             record.record_idx+=1;
         }

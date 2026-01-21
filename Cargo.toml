@@ -1,13 +1,15 @@
 [package]
 name = "tv"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 edition = "2024"
+description = "A tui based tabular data viewer."
+authors = ["Manuel Pasieka <manuel.pasieka@protonmail.ch>"]
 
 [dependencies]
 arboard = "3.6.1"
 clap = { version = "4.5.54", features = ["derive"] }
 derive_setters = "0.1.8"
-polars = { version = "0.52.0", features = ["lazy", "csv", "timezones"] }
+polars = { version = "0.52.0", features = ["lazy", "csv", "timezones", "parquet", "ipc"] }
 ratatui = "0.30.0"
 rayon = "1.11.0"
 tracing = "0.1.44"
@@ -19,8 +21,8 @@ husky-rs = "0.1.5"
 
 # cargo build --release --target x86_64-unknown-linux-musl
 [profile.release]
-opt-level = 3
-# opt-level = "z" # Optimize for size
+#opt-level = 3
+opt-level = "z" # Optimize for size
 lto = true # Link-time optimization
 codegen-units = 1
 strip = true # Strip symbols to reduce binary size

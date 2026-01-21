@@ -241,7 +241,7 @@ impl TableUI {
         } else if (data.last_status_message_update + STATUS_MESSAGE_DISPLAY_DURATION) - Instant::now() > std::time::Duration::ZERO {
             data.status_message.clone()
         } else {
-            data.name.to_string()
+            data.name.clone()
         };
         
         // Use chars().count() instead of .len() to handle multi-byte characters correctly in TUI
