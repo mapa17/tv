@@ -1,5 +1,4 @@
 
-use polars::time::Duration;
 use ratatui::layout::{Constraint, Layout, Margin, Position};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell, Paragraph};
@@ -239,12 +238,10 @@ impl TableUI {
         let left = if data.active_cmdinput {
             render_curser = true;
             format!(">{}", data.cmdinput.input)
+        } else if (data.last_status_message_update + STATUS_MESSAGE_DISPLAY_DURATION) - Instant::now() > std::time::Duration::ZERO {
+            data.status_message.clone()
         } else {
-            if (data.last_status_message_update + STATUS_MESSAGE_DISPLAY_DURATION) - Instant::now() > std::time::Duration::ZERO {
-                data.status_message.clone()
-            } else {
-                data.name.to_string()
-            }
+            data.name.to_string()
         };
         
         // Use chars().count() instead of .len() to handle multi-byte characters correctly in TUI

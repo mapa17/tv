@@ -81,7 +81,7 @@ impl Inputter {
     }
 
     fn right(&mut self) -> InputResult {
-        if self.curser_pos+1 <= self.current_input.len() {
+        if self.curser_pos < self.current_input.len() {
             self.curser_pos += 1;
         }
         self.get()

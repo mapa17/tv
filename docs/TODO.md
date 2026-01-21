@@ -13,4 +13,8 @@
 [ ] Build a Cell Mode, where the complete table is the content of a single cell with all its newlines and everything.
 [ ] Add style for popup
 [x] Change CMDLine to something similar to a header.
-[ ] In Record mode, show current record count / total in status line.
+[x] In Record mode, show current record count / total in status line.
+[x] Add jump to first column on 0
+[x] Add jump to last column on $
+[x] Bug: When jumping multiple records down, i can get over the last record if the last record is not at the bottom of the table.
+[ ] Bug: In histogram view, there is off by one error when jumping pages down.
