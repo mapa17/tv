@@ -774,7 +774,7 @@ impl Model {
     }
 
     fn load_arrow(path: &PathBuf) -> Result<LazyFrame, PolarsError> {
-        LazyFrame::scan_ipc(PlPath::Local(path.as_path().into()), polars::io::ipc::IpcScanOptions::default(), UnifiedScanArgs::default())
+        LazyFrame::scan_ipc(PlPath::Local(path.as_path().into()), polars::io::ipc::IpcScanOptions, UnifiedScanArgs::default())
     }
 
     pub fn raw_keyevents(&self) -> bool {
