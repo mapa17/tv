@@ -3,7 +3,7 @@ use ratatui::layout::{Constraint, Layout, Margin, Position};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell, Paragraph};
 use ratatui::{Frame, layout::Rect};
-use tracing::{warn, trace};
+use tracing::warn;
 use std::time::Instant;
 
 use crate::domain::TVConfig;
@@ -194,7 +194,7 @@ impl TableUI {
             .border_style(Style::new().white().bold());
         let popup_vertical_margin = (area.height.saturating_sub(data.popup_message.matches("\n").count() as u16 + (POPUP_VERTICAL_MARGIN*2) as u16)) / 2;
         let popup_margin = area.width.saturating_sub(MAX_POPUP_CONTENT_WIDTH as u16) / 2;
-        frame.render_widget(popup, area.inner(Margin {vertical: popup_vertical_margin as u16, horizontal: popup_margin as u16,}));
+        frame.render_widget(popup, area.inner(Margin {vertical: popup_vertical_margin, horizontal: popup_margin,}));
     }
     fn render_table(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
         let columns = &data.table;
