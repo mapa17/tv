@@ -69,13 +69,11 @@ pub enum Message {
 
 
 pub const HELP_TEXT: &str = "
-TV - Table Viewer Key bindings
-
-        == General ==
 q       : Quit
 
         == Table View ==
 Enter   : Enter Record view for selected cell.
+TAB     : Show Row Index
 h       : Move selection to the left.
 j       : Move selection to the down.
 k       : Move selection to the up.
@@ -84,8 +82,17 @@ J       : Jump page down
 K       : Jump page up
 g       : Jump to the first row
 G       : Jump to the last row
+0       : Jump to the first column
+$       : Jump to the last column
+y       : Copy cell value
+Y       : Copy row
 -       : Shrink column
 +       : Expand column
+/       : Search in complete table
+n       : Jump to next search result
+p       : Jump to previous search result
+|       : Filter table on matches in the current column
+F       : Show histogram of current column
 
 
         == Record View ==
@@ -94,6 +101,13 @@ h       : Show previous row record.
 j       : Move selection to the down.
 k       : Move selection to the up.
 l       : Show next row record.
+
+        == Histogram View ==
+ESC     : Return to Table view
+y       : Copy selection
+j       : Move selection to the down.
+k       : Move selection to the up.
+ENTER   : Filter table for selected value
 
 
 Question? Write to contact@pasieka.ai

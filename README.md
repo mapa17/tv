@@ -1,16 +1,17 @@
 # tv
+<div align="center">
+  <img src="docs/logo.png" alt="tv Logo" width="200" />
+
+  **A tui based tabular data viewer.**
+</div>
 A tui based tabular data viewer.
 
-## Compilation
+## Usage
+
 ```sh
-# Default linux shared binary
-cargo build --release
+tv --help
 
-# Build static linux binary
-rustup target add x86_64-unknown-linux-musl
-cargo build --release --target x86_64-unknown-linux-musl
-
-# Add Windows target for static binary
-rustup target add x86_64-pc-windows-gnu
-cargo build --release --target x86_64-pc-windows-gnu
+tv data.csv
 ```
+
+## Keybindings
