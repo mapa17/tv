@@ -5,6 +5,7 @@ use tracing_subscriber::{self, EnvFilter, Layer, layer::SubscriberExt, util::Sub
 use tracing_error::ErrorLayer;
 use tracing::info;
 use clap::{Parser};
+use shellexpand;
 
 mod model;
 mod ui;
@@ -32,8 +33,30 @@ fn main() -> ExitCode {
 }
 
 pub fn initialize_logging(_cfg: &TVConfig, args: &TVArguments) -> Result<(), std::io::Error> {
-    let log_path = args.log.clone();
-    let log_file = std::fs::File::create(log_path)?;
+    //let log_path = shellexpand::full(args.log);
+    let log_path = PathBuf::from(
+    shellexpand::full(&args.log.to_string_lossy())
+        .unwrap()
+        .to_string()
+    );
+    // Create parent directories if they don't exist
+    if let Some(parent) = log_path.parent() {
+        match std::fs::create_dir_all(parent) {
+            Ok(_) => (),
+            Err(e) => {
+                println!("Creating directories for log file failed! Log path {:?}", log_path.parent());
+                return Err(e);
+            }
+        }
+    }
+
+    let log_file = match std::fs::File::create(log_path.clone()){
+        Ok(file) => file,
+        Err(e) => {
+            println!("Creating log file failed! Log path {:?}", log_path);
+            return Err(e);
+        }
+    };
     let log_level = match args.verbose {
         0 => "warning", 
         1 => "info", 
@@ -59,14 +82,14 @@ pub fn initialize_logging(_cfg: &TVConfig, args: &TVArguments) -> Result<(), std
 
 #[derive(Parser)]
 #[command(name = "TV")]
-#[command(version = "0.1")]
+#[command(version = "1.0")]
 #[command(about = "TUI Table viewer", long_about = None)]
 struct Cli {
     /// Location of file to open
     file: PathBuf,
 
     /// Sets location of log file
-    #[arg(short, long, value_name = "LOG", default_value="./.tv.log")]
+    #[arg(short, long, value_name = "LOG", default_value="~/.cache/tv/tv.log")]
     log: PathBuf,
 
     /// Turn debugging information on
