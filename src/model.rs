@@ -389,7 +389,7 @@ impl Model {
                 input: Inputter::default(),
                 last_input: InputResult::default(),
                 active_cmdinput: false,
-                status_message: "Loading file ...".to_string(),
+                status_message: format!("Loading data took {data_loading_duration}ms ..."),
                 last_status_message_update: Instant::now(),
             })
     }
@@ -1035,12 +1035,22 @@ impl Model {
 
     }
 
+    // Return mask index positions of rows in the column that match given term
     fn search_column(term: &str, column: &Column, mask: &[usize]) -> Vec<usize> {
-        mask.iter()
-            .filter(|&&row_idx| column.data[row_idx].contains(term))
-            .copied()
+        let mut matches = Vec::new();
+        for (midx, &m) in mask.iter().enumerate() {
+            if column.data[m].contains(term) {
+                matches.push(midx)
+            }
+        }
+        matches
+        /*   mask.iter()
+            .enumerate()
+            .filter(|(_, &row_idx)| column.data[row_idx].contains(term))
+            .map(|(midx, _)| midx)
             .collect()
-        
+        */
+
     }
 
     fn search(&mut self, term: &str) {
@@ -1065,12 +1075,12 @@ impl Model {
 
         let search_duration = start_time.elapsed().as_millis();
 
-
         // Sort by rows 
         table.search_results = matching_rows.into_iter().collect();
         table.search_results.sort_unstable();
         // Set the search index to the first match that is after the cursor
-        table.search_idx = table.search_results.iter().position(|&(row, _col)| row >= table.offset_row + table.curser_row).unwrap_or(0);
+        let curser_ridx = table.offset_row + table.curser_row;
+        table.search_idx = table.search_results.iter().position(|&(row, _col)| row >= curser_ridx).unwrap();
 
         trace!("Search found {} matching rows in {}ms", 
             table.search_results.len(), 
@@ -1160,8 +1170,10 @@ impl Model {
 
     fn filter_table(&mut self, indices: Vec<usize>) {
         let mut new_table = TableView::empty();
+        let table = self.tables.last().unwrap();
         new_table.name = format!("F[{}]", self.tables.last().unwrap().name);
-        new_table.rows = Arc::new(indices.clone());
+        let resolved_indices: Vec<usize> = indices.iter().map(|&midx| table.rows[midx]).collect();
+        new_table.rows = Arc::new(resolved_indices);
         self.tables.push(new_table);
         self.update_table_data();
     }
