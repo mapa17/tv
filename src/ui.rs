@@ -3,7 +3,7 @@ use ratatui::layout::{Constraint, Layout, Margin, Position};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell, Paragraph};
 use ratatui::{Frame, layout::Rect};
-use tracing::{warn, trace};
+use tracing::warn;
 use std::time::Instant;
 
 use crate::domain::TVConfig;
@@ -15,7 +15,9 @@ pub const SCROLLBAR_WIDTH: usize = 1;
 pub const TABLE_HEADER_HEIGHT: usize = 1;
 //pub const RECORD_HEADER_HEIGHT: usize = 1;
 pub const CMDLINE_HEIGH: usize = 1;
-pub const POPUP_MARGIN: usize = 3;
+pub const POPUP_HORIZONTAL_MARGIN: usize = 3;
+pub const POPUP_VERTICAL_MARGIN: usize = 3;
+pub const MAX_POPUP_CONTENT_WIDTH:usize = 60;
 pub const STATUS_MESSAGE_DISPLAY_DURATION:std::time::Duration = std::time::Duration::new(2, 0);
 
 
@@ -61,6 +63,7 @@ struct UIStyles {
     header: Style,
     statusline: Style,
     selected_cell: Style,
+    popup: Style,
 }
 impl UIStyles {
     const fn new(colors: &UIColors) -> Self {
@@ -72,6 +75,7 @@ impl UIStyles {
             header: Style::new().fg(colors.header_fg).bg(colors.header_bg).bold().underlined(),
             statusline: Style::new().fg(colors.header_fg).bg(colors.header_bg),
             selected_cell: Style::new().fg(colors.selected_cell_fg).bg(colors.selected_cell_bg).bold().underlined(),
+            popup: Style::new().fg(colors.header_fg).bg(colors.header_bg),
         }
     }
 }
@@ -139,18 +143,15 @@ impl TableUI {
     }
 
     pub fn draw(&mut self, data: &UIData, frame: &mut Frame) {
-        trace!{"Drawing ..."};
         let layout = Self::create_layout(frame, &data.layout);
 
+        self.render_table(data, frame, layout.table);
+        self.render_index(data, frame, layout.index);
+        self.render_statusline(data, frame, layout.statusline);
+
         if data.show_popup {
-            trace!{"Popup ..."};
             self.render_popup(data, frame, layout.table);
-        } else {
-            trace!{"Table ..."};
-            self.render_table(data, frame, layout.table);
-            self.render_index(data, frame, layout.index);
-            self.render_statusline(data, frame, layout.statusline);
-        }
+        }          
         self.last_render = Instant::now();
     }
 
@@ -187,11 +188,13 @@ impl TableUI {
 
         let popup = Popup::default()
             .content(data.popup_message.clone())
-            .style(Style::new().yellow())
-            .title("Help")
+            .style(self.styles.popup)
+            .title("Key Bindings")
             .title_style(Style::new().white().bold())
-            .border_style(Style::new().red());
-        frame.render_widget(popup, area.inner(Margin {vertical: POPUP_MARGIN as u16, horizontal: POPUP_MARGIN as u16,}));
+            .border_style(Style::new().white().bold());
+        let popup_vertical_margin = (area.height.saturating_sub(data.popup_message.matches("\n").count() as u16 + (POPUP_VERTICAL_MARGIN*2) as u16)) / 2;
+        let popup_margin = area.width.saturating_sub(MAX_POPUP_CONTENT_WIDTH as u16) / 2;
+        frame.render_widget(popup, area.inner(Margin {vertical: popup_vertical_margin, horizontal: popup_margin,}));
     }
     fn render_table(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
         let columns = &data.table;

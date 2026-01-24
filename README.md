@@ -1,16 +1,41 @@
 # tv
-A tui based tabular data viewer.
+<div align="center">
+  <img src="docs/logo.png" alt="tv Logo" width="100" />
 
-## Compilation
+  **A tui based tabular data viewer.**
+</div>
+
+The CLI is your home, and you are looking for an alternative to vim in order to look at your csv files?
+
+Then tv is the right tool for you!
+
+
+## Features
+- Support CSV, Parquet, Arrow
+- VIM keybindings for navigation
+- Search
+- Search based row filtering
+- Histogram creation
+- Filtering based on histogram
+- Stacked filtering operations
+
+## Usage
+
 ```sh
-# Default linux shared binary
-cargo build --release
+tv --help
 
-# Build static linux binary
-rustup target add x86_64-unknown-linux-musl
-cargo build --release --target x86_64-unknown-linux-musl
-
-# Add Windows target for static binary
-rustup target add x86_64-pc-windows-gnu
-cargo build --release --target x86_64-pc-windows-gnu
+tv data.csv
 ```
+
+## Demo
+
+<div align="center">
+  <img src="docs/tv-demo.gif" alt="tv demo" width="800" />
+
+  **A tui based tabular data viewer.**
+</div>
+
+## License & Contact
+MIT License
+
+Send feedback to manuel.pasieka@protonmail.ch
