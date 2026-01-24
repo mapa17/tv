@@ -13,3 +13,11 @@ cargo build --release --target x86_64-unknown-linux-musl
 rustup target add x86_64-pc-windows-gnu
 cargo build --release --target x86_64-pc-windows-gnu
 ```
+
+## Docs
+
+Build gif demo using [vhs](https://github.com/charmbracelet/vhs).
+
+```sh
+vhs docs/tv-demo.tape -o docs/tv-demo.gif
+```
