@@ -1,6 +1,6 @@
 [package]
 name = "tv"
-version = "1.0.0-beta.1"
+version = "1.0.0-beta.2"
 edition = "2024"
 description = "A tui based tabular data viewer."
 authors = ["Manuel Pasieka <manuel.pasieka@protonmail.ch>"]

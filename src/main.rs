@@ -5,7 +5,6 @@ use tracing_subscriber::{self, EnvFilter, Layer, layer::SubscriberExt, util::Sub
 use tracing_error::ErrorLayer;
 use tracing::info;
 use clap::{Parser};
-use shellexpand;
 
 mod model;
 mod ui;
