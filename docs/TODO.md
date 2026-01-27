@@ -18,3 +18,4 @@
 [x] Add jump to last column on $
 [x] Bug: When jumping multiple records down, i can get over the last record if the last record is not at the bottom of the table.
 [ ] Bug: In histogram view, there is off by one error when jumping pages down.
+[x] Bug: The index column should show the index in the column data, not the current table index

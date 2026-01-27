@@ -19,6 +19,9 @@ pub const POPUP_HORIZONTAL_MARGIN: usize = 3;
 pub const POPUP_VERTICAL_MARGIN: usize = 3;
 pub const MAX_POPUP_CONTENT_WIDTH:usize = 65;
 pub const STATUS_MESSAGE_DISPLAY_DURATION:std::time::Duration = std::time::Duration::new(2, 0);
+pub const COLUMN_WIDTH_THRESHOLD:usize = 25;
+pub const COLUMN_WIDTH_MARGIN:usize = 1;
+pub const COLUMN_WIDTH_COLLAPSED_COLUMN:usize = 3;
 
 
 #[derive(Clone)]

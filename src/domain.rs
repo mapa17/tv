@@ -32,7 +32,7 @@ impl From<PolarsError> for TVError {
 #[derive(Debug, Clone)]
 pub struct TVConfig {
     pub event_poll_time: usize,
-    pub default_column_width: usize,
+    pub max_column_width: usize,
     pub column_margin: usize,
 }
 
@@ -48,8 +48,7 @@ pub enum Message {
     MoveToFirstColumn,
     MoveToLastColumn,
     MoveBeginning,
-    ShrinkColumn,
-    GrowColumn,
+    ToggleColumnState,
     ToggleIndex,
     Resize(usize, usize,),
     CopyCell,
@@ -73,7 +72,7 @@ pub const HELP_TEXT: &str = "
 
                 == Table View ==
     Enter       : Enter Record view for selected cell.
-    TAB         : Show Row Index
+    v         : Show Row Index
     h           : Move selection to the left.
     j/Left      : Move selection to the down.
     k/Up        : Move selection to the up.
@@ -86,8 +85,7 @@ pub const HELP_TEXT: &str = "
     $/End       : Jump to the last column
     y           : Copy cell value
     Y           : Copy row
-    -           : Shrink column
-    +           : Expand column
+    Tab         : Expand/Collapse column
     /           : Search in complete table
     n           : Jump to next search result
     p           : Jump to previous search result

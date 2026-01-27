@@ -10,7 +10,14 @@ use rayon::prelude::*;
 use arboard::Clipboard;
 
 use crate::domain::{TVError, Message, TVConfig, HELP_TEXT};
-use crate::ui::{SCROLLBAR_WIDTH, TABLE_HEADER_HEIGHT, CMDLINE_HEIGH};
+use crate::ui::{
+    SCROLLBAR_WIDTH,
+    TABLE_HEADER_HEIGHT, 
+    CMDLINE_HEIGH,
+    COLUMN_WIDTH_MARGIN,
+    COLUMN_WIDTH_THRESHOLD,
+    COLUMN_WIDTH_COLLAPSED_COLUMN,
+};
 use crate::inputter::{Inputter, InputResult};
 
 
@@ -44,21 +51,18 @@ pub struct Column {
     idx: u16,
     name: String,
     status: ColumnStatus,
-    width: usize, // q95 width
-    width_max: usize,
-    //histogram: HashMap<String, usize>,
+    max_width: usize,
     render_width: usize,
     data: Vec<String>,
 }
 
 impl Column {
     pub fn as_string(&self) -> String {
-        format!("{} \"{}\", {:?}, width: {}, width_max: {}, render_width: {}, # rows {}", 
+        format!("{} \"{}\", {:?}, width_max: {}, render_width: {}, # rows {}", 
         self.idx,
         self.name,
         self.status,
-        self.width,
-        self.width_max,
+        self.max_width,
         self.render_width,
         self.data.len(),
     )
@@ -85,7 +89,7 @@ impl ColumnView {
 #[derive(Debug, PartialEq)]
 pub enum ColumnStatus {
     NORMAL,
-    EXPANDED,
+    //EXPANDED,
     COLLAPSED,
 }
 
@@ -145,7 +149,7 @@ impl TableView {
         let rbegin = self.offset_row;
         let rend = std::cmp::min(rbegin + self.heigh, self.rows.len());
 
-        let data = (rbegin+1..rend+1).map(|idx| idx.to_string()).collect::<Vec<String>>();
+        let data = self.rows[rbegin..rend].iter().map(|idx| (idx+1).to_string()).collect::<Vec<String>>();
         let width = data.last().map(|s| s.len()).unwrap_or(3);
         self.index = ColumnView { name: "".to_string(), width, data} 
     }
@@ -401,7 +405,6 @@ impl Model {
             name: format!("R[{}]", table.name),
             table: vec![record.header_view.clone(), record.row_view.clone()],
             index: table.index.clone(), 
-            //#nrows: record.row_view.data.len(),
             nrows: table.rows.len(),
             selected_row: record.curser_row,
             selected_column: 1,
@@ -509,7 +512,6 @@ impl Model {
         hist.curser_offset = 0;
         hist.curser_row = 0;
         hist.column_idx = current_column;
-        //hist.table_idx = self.current_table;
         hist.height = table.heigh;
         hist.width = table.width; 
 
@@ -569,7 +571,6 @@ impl Model {
         record.curser_offset = 0;
         record.curser_row = 0;
         record.record_idx = record_idx;
-        //record.table_idx = table_idx;
         record.height = table.heigh;
         record.width = table.width; 
 
@@ -627,7 +628,7 @@ impl Model {
         // Calculate current render with for each column
         // This could change because a column was expanded or collapsed
         for column in columns.iter_mut() {
-            column.render_width = Self::calculate_column_width(column, self.config.default_column_width);
+            column.render_width = Self::calculate_column_width(column, self.config.max_column_width);
         }
 
         // Create a list of columns that fit in the table 
@@ -701,35 +702,26 @@ impl Model {
     fn load_columns(df: &DataFrame, idx: usize, col_name: &str) -> Result<Column, PolarsError> {
         let col = df.column(col_name)?.cast(&DataType::String)?;
         let series = col.str()?;
-        let mut lengths = Vec::with_capacity(series.len());
-        //let mut counts: HashMap<String, usize> = HashMap::new();
         let mut data = Vec::with_capacity(series.len());
 
+        let mut max_width = 0;
         for value in series.into_iter() {
             let ss = match value {
                 Some(s) => s.to_string().replace("\r\n", " ↵ ").replace("\n", " ↵ "),
                 None => String::from("∅"),
             };
-
-            lengths.push(ss.len());
-            //*counts.entry(ss.clone()).or_insert(0) += 1;
+            if ss.len() > max_width{
+                max_width = ss.len();
+            }
             data.push(ss);
         } 
 
-        lengths.sort_unstable();
-        let q95_idx = ((lengths.len() as f64 * 0.95).ceil() as usize).min(lengths.len());
-        let q95_length = lengths.get(q95_idx.saturating_sub(1)).copied().unwrap_or(col_name.len());
-        let width_max = lengths.last().copied().unwrap_or(q95_length);
-        //let render_width: min(width_max)
-       
         Ok(Column {
             idx: idx as u16,
             name: col_name.to_string(),
             status: ColumnStatus::NORMAL,
-            width: q95_length,
-            width_max,
+            max_width,
             render_width: 0, // Will be set later
-            //histogram: counts,
             data,
         })
     }
@@ -757,11 +749,11 @@ impl Model {
         })
     }
 
-    fn calculate_column_width(column: &Column, default_width: usize) -> usize {
+    fn calculate_column_width(column: &Column, max_column_width: usize) -> usize {
+        let width = std::cmp::max(column.name.len(), column.max_width) + COLUMN_WIDTH_MARGIN;
         match column.status {
-            ColumnStatus::COLLAPSED => 3,
-            ColumnStatus::NORMAL => std::cmp::max(column.name.len(), std::cmp::min(column.width, default_width)),
-            ColumnStatus::EXPANDED => std::cmp::max(column.name.len(), column.width_max),
+            ColumnStatus::COLLAPSED => COLUMN_WIDTH_COLLAPSED_COLUMN,
+            ColumnStatus::NORMAL => std::cmp::min(width, max_column_width),
         }
     }
 
@@ -821,8 +813,7 @@ impl Model {
                         Message::MovePageDown => self.move_table_selection_down(10),
                         Message::MoveBeginning => self.move_table_selection_beginning(),
                         Message::MoveEnd => self.move_table_selection_end(),
-                        Message::GrowColumn => self.grow_table_selected_column(),
-                        Message::ShrinkColumn => self.shrink_table_selected_column(),
+                        Message::ToggleColumnState => self.toggle_column_status(),
                         Message::ToggleIndex => self.toggle_table_index(),
                         Message::Resize(width, height) => self.ui_resize(width, height),
                         Message::CopyCell => self.copy_table_cell(),
@@ -873,13 +864,10 @@ impl Model {
                     match msg {
                         Message::Quit => self.quit(),
                         Message::MoveDown => self.move_histogram_selection_down(1),
-                        //Message::MoveLeft => self.previous_record(),
-                        //Message::MoveRight => self.next_record(),
                         Message::MoveUp => self.move_histogram_selection_up(1),
                         Message::MovePageUp => self.move_histogram_selection_up(10),
                         Message::MovePageDown => self.move_histogram_selection_down(10),
                         Message::Resize(width, height) => self.ui_resize(width, height),
-                        //Message::CopyCell => self.copy_record_cell(),
                         Message::Help => self.show_help(),
                         Message::Enter => self.enter(),
                         Message::Exit => self.exit(),
@@ -1044,13 +1032,6 @@ impl Model {
             }
         }
         matches
-        /*   mask.iter()
-            .enumerate()
-            .filter(|(_, &row_idx)| column.data[row_idx].contains(term))
-            .map(|(midx, _)| midx)
-            .collect()
-        */
-
     }
 
     fn search(&mut self, term: &str) {
@@ -1213,24 +1194,12 @@ impl Model {
             Err(e) => trace!("Error copying to clipboard: {:?}", e),
         }
     }
- 
-    fn grow_table_selected_column(&mut self) {
+
+    fn toggle_column_status(&mut self) {
         let table = self.tables.last_mut().unwrap();
         let new_status = match self.data[table.data_idx][table.visible_columns[table.curser_column]].status {
             ColumnStatus::COLLAPSED => ColumnStatus::NORMAL,
-            ColumnStatus::NORMAL => ColumnStatus::EXPANDED,
-            ColumnStatus::EXPANDED => ColumnStatus::EXPANDED,
-        };
-        self.data[table.data_idx][table.visible_columns[table.curser_column]].status = new_status;
-        self.update_table_data();
-    }
-
-    fn shrink_table_selected_column(&mut self) {
-        let table = self.tables.last_mut().unwrap();
-        let new_status = match self.data[table.data_idx][table.visible_columns[table.curser_column]].status {
-            ColumnStatus::COLLAPSED => ColumnStatus::COLLAPSED,
             ColumnStatus::NORMAL => ColumnStatus::COLLAPSED,
-            ColumnStatus::EXPANDED => ColumnStatus::NORMAL,
         };
         self.data[table.data_idx][table.visible_columns[table.curser_column]].status = new_status;
         self.update_table_data();

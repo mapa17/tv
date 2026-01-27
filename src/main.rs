@@ -114,7 +114,7 @@ fn arg_parser() -> TVArguments {
 fn run() -> Result<(), TVError> {
     let cfg = TVConfig{
         event_poll_time: 100,
-        default_column_width: 10,
+        max_column_width: 25,
         column_margin: 1,
     };
 
