@@ -8,7 +8,6 @@ use ratatui::crossterm::event::KeyEvent;
 use tracing::{info, debug, error, trace};
 use rayon::prelude::*;
 use arboard::Clipboard;
-use tracing_subscriber::fmt::format;
 
 use crate::domain::{TVError, Message, TVConfig, HELP_TEXT};
 use crate::ui::{
@@ -359,12 +358,12 @@ impl Model {
                     input: Inputter::default(),
                     last_input: InputResult::default(),
                     active_cmdinput: false,
-                    status_message: format!("Started tv!"),
+                    status_message: "Started tv!".to_string(),
                     last_status_message_update: Instant::now(),
                 };
         //model.update_table_data();
         model.update_uidata_for_table();
-        model.set_status_message(format!("Loading ..."));
+        model.set_status_message("Loading ...".to_string());
         Ok(model)
         }
 

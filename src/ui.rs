@@ -3,7 +3,6 @@ use ratatui::layout::{Constraint, Layout, Margin, Position};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell, Paragraph};
 use ratatui::{Frame, layout::Rect};
-use tracing::warn;
 use std::time::Instant;
 
 use crate::domain::TVConfig;
@@ -206,7 +205,7 @@ impl TableUI {
             for _ in 0..data.layout.table_height {
                 rows.push(Row::new([""]).style(self.styles.row));
             }
-            let widths = [Constraint::Length(area.width as u16)];
+            let widths = [Constraint::Length(area.width)];
 
             let header = Row::new(["Loading ..."]).style(self.styles.header);
 
