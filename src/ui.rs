@@ -202,7 +202,16 @@ impl TableUI {
     fn render_table(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
         let columns = &data.table;
         if columns.is_empty() {
-            warn!("No visible columns!");
+            let mut rows = Vec::new();
+            for _ in 0..data.layout.table_height {
+                rows.push(Row::new([""]).style(self.styles.row));
+            }
+            let widths = [Constraint::Length(area.width as u16)];
+
+            let header = Row::new(["Loading ..."]).style(self.styles.header);
+
+            let table = Table::new(rows, widths).header(header);
+            frame.render_widget(table, area);
             return
         }
         let mut rows = Vec::new();
