@@ -13,7 +13,7 @@ mod controller;
 mod popup;
 mod inputter;
 
-use domain::{TVConfig, TVError, Message};
+use domain::{TVConfig, TVError};
 use model::{Model, Status};
 use ui::TableUI;
 use controller::Controller;
@@ -114,26 +114,29 @@ fn arg_parser() -> TVArguments {
 fn run() -> Result<(), TVError> {
     let cfg = TVConfig{
         event_poll_time: 100,
-        default_column_width: 10,
+        max_column_width: 25,
         column_margin: 1,
     };
 
     let args = arg_parser(); 
     initialize_logging(&cfg, &args)?;
     info!("Starting tv!");
-
-     //let mut model = Model::load("tests/fixtures/testdata_01.csv".into())?; 
-    let mut model = Model::from_file(args.filepath, &cfg)?; 
-    
-    let controller = Controller::new(&cfg);
+   
     let mut terminal = ratatui::init();
     let mut ui = TableUI::new(&cfg);
 
     // Start by telling the model about the actual ui size
     let area = terminal.get_frame().area();
-    let mut message= Some(Message::Resize(area.width as usize, area.height as usize)); 
 
+    let mut model = Model::init(&cfg, area.width as usize, area.height as usize)?; 
+    let uidata = model.get_uidata();
+    terminal.draw(|f| ui.draw(uidata, f))?;
+
+    model.load_data_file(args.filepath)?; 
+ 
+    let controller = Controller::new(&cfg);
     while model.status != Status::QUITTING {
+        let message = controller.handle_event(&model)?; 
         model.update(message)?;
 
         let uidata = model.get_uidata();
@@ -141,7 +144,6 @@ fn run() -> Result<(), TVError> {
             terminal.draw(|f| ui.draw(uidata, f))?;
         }
 
-        message = controller.handle_event(&model)?; 
     };
 
     Ok(())

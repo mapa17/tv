@@ -19,6 +19,8 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
 [dev-dependencies]
 husky-rs = "0.1.5"
+# Add car
+# cargo-audit
 
 # cargo build --release --target x86_64-unknown-linux-musl
 [profile.release]

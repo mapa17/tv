@@ -3,7 +3,6 @@ use ratatui::layout::{Constraint, Layout, Margin, Position};
 use ratatui::style::{Color, Style, palette::tailwind};
 use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell, Paragraph};
 use ratatui::{Frame, layout::Rect};
-use tracing::warn;
 use std::time::Instant;
 
 use crate::domain::TVConfig;
@@ -19,6 +18,9 @@ pub const POPUP_HORIZONTAL_MARGIN: usize = 3;
 pub const POPUP_VERTICAL_MARGIN: usize = 3;
 pub const MAX_POPUP_CONTENT_WIDTH:usize = 65;
 pub const STATUS_MESSAGE_DISPLAY_DURATION:std::time::Duration = std::time::Duration::new(2, 0);
+pub const COLUMN_WIDTH_THRESHOLD:usize = 25;
+pub const COLUMN_WIDTH_MARGIN:usize = 1;
+pub const COLUMN_WIDTH_COLLAPSED_COLUMN:usize = 3;
 
 
 #[derive(Clone)]
@@ -199,7 +201,16 @@ impl TableUI {
     fn render_table(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
         let columns = &data.table;
         if columns.is_empty() {
-            warn!("No visible columns!");
+            let mut rows = Vec::new();
+            for _ in 0..data.layout.table_height {
+                rows.push(Row::new([""]).style(self.styles.row));
+            }
+            let widths = [Constraint::Length(area.width)];
+
+            let header = Row::new(["Loading ..."]).style(self.styles.header);
+
+            let table = Table::new(rows, widths).header(header);
+            frame.render_widget(table, area);
             return
         }
         let mut rows = Vec::new();
