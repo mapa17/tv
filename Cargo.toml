@@ -7,7 +7,7 @@ authors = ["Manuel Pasieka <manuel.pasieka@protonmail.ch>"]
 
 [dependencies]
 arboard = "3.6.1"
-clap = { version = "4.5.54", features = ["derive"] }
+clap = { version = "4.5.56", features = ["derive"] }
 derive_setters = "0.1.8"
 polars = { version = "0.52.0", features = ["lazy", "csv", "timezones", "parquet", "ipc"] }
 ratatui = "0.30.0"
