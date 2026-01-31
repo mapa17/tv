@@ -1,5 +1,5 @@
-
 use ratatui::crossterm::event::{self, KeyCode, KeyModifiers};
+use tracing::trace;
 
 #[derive(Default)]
 pub struct Inputter {
@@ -89,9 +89,17 @@ impl Inputter {
 
     fn key(&mut self, code: KeyCode, _modifier: KeyModifiers) -> InputResult {
         if let Some(chr) = code.as_char() {
-            self.current_input.insert(self.curser_pos,chr);
-            self.curser_pos +=1;
+            self.current_input.insert(self.getbytepos(), chr);
+            self.curser_pos += 1;
         }
         self.get()
+    }
+
+    fn getbytepos(&self) -> usize {
+        self.current_input
+            .char_indices()
+            .nth(self.curser_pos)
+            .map(|(byte_idx, _)| byte_idx)
+            .unwrap_or(self.current_input.len())
     }
 }

@@ -1,7 +1,9 @@
-
 use ratatui::layout::{Constraint, Layout, Margin, Position};
 use ratatui::style::{Color, Style, palette::tailwind};
-use ratatui::widgets::{Block, Borders, Row, ScrollbarState, Table, TableState, Scrollbar, ScrollbarOrientation, Cell, Paragraph};
+use ratatui::widgets::{
+    Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
+    TableState,
+};
 use ratatui::{Frame, layout::Rect};
 use std::time::Instant;
 
@@ -12,16 +14,12 @@ use crate::popup::Popup;
 pub const INDEX_COLUMN_BORDER: usize = 2;
 pub const SCROLLBAR_WIDTH: usize = 1;
 pub const TABLE_HEADER_HEIGHT: usize = 1;
-//pub const RECORD_HEADER_HEIGHT: usize = 1;
 pub const CMDLINE_HEIGH: usize = 1;
-pub const POPUP_HORIZONTAL_MARGIN: usize = 3;
 pub const POPUP_VERTICAL_MARGIN: usize = 3;
-pub const MAX_POPUP_CONTENT_WIDTH:usize = 65;
-pub const STATUS_MESSAGE_DISPLAY_DURATION:std::time::Duration = std::time::Duration::new(2, 0);
-pub const COLUMN_WIDTH_THRESHOLD:usize = 25;
-pub const COLUMN_WIDTH_MARGIN:usize = 1;
-pub const COLUMN_WIDTH_COLLAPSED_COLUMN:usize = 3;
-
+pub const MAX_POPUP_CONTENT_WIDTH: usize = 65;
+pub const STATUS_MESSAGE_DISPLAY_DURATION: std::time::Duration = std::time::Duration::new(2, 0);
+pub const COLUMN_WIDTH_MARGIN: usize = 1;
+pub const COLUMN_WIDTH_COLLAPSED_COLUMN: usize = 3;
 
 #[derive(Clone)]
 struct UIColors {
@@ -41,7 +39,7 @@ struct UIColors {
 }
 
 impl UIColors {
-    const fn new(color: &tailwind::Palette) -> Self {
+    const fn new_dark(color: &tailwind::Palette) -> Self {
         Self {
             buffer_bg: tailwind::SLATE.c950,
             header_bg: color.c900,
@@ -56,6 +54,24 @@ impl UIColors {
             normal_row_color: tailwind::SLATE.c950,
             alt_row_color: tailwind::SLATE.c900,
             footer_border_color: color.c400,
+        }
+    }
+
+    const fn new_light(color: &tailwind::Palette) -> Self {
+        Self {
+            buffer_bg: tailwind::SLATE.c50,
+            header_bg: color.c100,
+            header_fg: tailwind::SLATE.c800,
+            row_fg: tailwind::SLATE.c700,
+            row_bg: tailwind::SLATE.c50,
+            selected_row_fg: tailwind::AMBER.c900,
+            selected_row_bg: tailwind::AMBER.c100,
+            selected_column_fg: color.c700,
+            selected_cell_fg: tailwind::BLUE.c50,
+            selected_cell_bg: tailwind::BLUE.c600,
+            normal_row_color: tailwind::SLATE.c50,
+            alt_row_color: tailwind::SLATE.c100,
+            footer_border_color: color.c600,
         }
     }
 }
@@ -74,14 +90,21 @@ impl UIStyles {
             selected_row: Style::new()
                 .fg(colors.selected_row_fg)
                 .bg(colors.selected_row_bg),
-            header: Style::new().fg(colors.header_fg).bg(colors.header_bg).bold().underlined(),
+            header: Style::new()
+                .fg(colors.header_fg)
+                .bg(colors.header_bg)
+                .bold()
+                .underlined(),
             statusline: Style::new().fg(colors.header_fg).bg(colors.header_bg),
-            selected_cell: Style::new().fg(colors.selected_cell_fg).bg(colors.selected_cell_bg).bold().underlined(),
+            selected_cell: Style::new()
+                .fg(colors.selected_cell_fg)
+                .bg(colors.selected_cell_bg)
+                .bold()
+                .underlined(),
             popup: Style::new().fg(colors.header_fg).bg(colors.header_bg),
         }
     }
 }
-
 
 pub struct TableUI {
     colors: UIColors,
@@ -108,10 +131,13 @@ const PALETTES: [tailwind::Palette; 4] = [
     tailwind::RED,
 ];
 
-
 impl TableUI {
-    pub fn new(_config: &TVConfig) -> Self {
-        let colors = UIColors::new(&PALETTES[0]);
+    pub fn new(config: &TVConfig) -> Self {
+        let colors = if config.light_colors {
+            UIColors::new_light(&PALETTES[0])
+        } else {
+            UIColors::new_dark(&PALETTES[0])
+        };
         let styles = UIStyles::new(&colors);
 
         Self {
@@ -126,17 +152,23 @@ impl TableUI {
     }
 
     fn create_layout(frame: &Frame, s: &UILayout) -> TableUILayout {
-        let vertical = &Layout::vertical([Constraint::Length((s.table_height + TABLE_HEADER_HEIGHT) as u16), Constraint::Length(s.statusline_height as u16)]);
+        let vertical = &Layout::vertical([
+            Constraint::Length((s.table_height + TABLE_HEADER_HEIGHT) as u16),
+            Constraint::Length(s.statusline_height as u16),
+        ]);
         let vsplit = vertical.split(frame.area());
 
         let mut index_width = s.index_width;
         if index_width > 0 {
             index_width += INDEX_COLUMN_BORDER;
         }
-        let horizontal = &Layout::horizontal([Constraint::Length(index_width as u16), Constraint::Length((s.table_width + SCROLLBAR_WIDTH) as u16)]);
+        let horizontal = &Layout::horizontal([
+            Constraint::Length(index_width as u16),
+            Constraint::Length((s.table_width + SCROLLBAR_WIDTH) as u16),
+        ]);
         let hsplit = horizontal.split(vsplit[0]);
         //trace!("Splitting table for index from total={}, index={}, table={}", vsplit[0].width, hsplit[0].width, hsplit[1].width);
-        
+
         TableUILayout {
             table: hsplit[1],
             statusline: vsplit[1],
@@ -153,7 +185,7 @@ impl TableUI {
 
         if data.show_popup {
             self.render_popup(data, frame, layout.table);
-        }          
+        }
         self.last_render = Instant::now();
     }
 
@@ -168,35 +200,49 @@ impl TableUI {
     //         layout = Self::create_layout(frame, true, index_column.width);
     //     }
     //     ((layout.table.width as usize).saturating_sub(SCROLLBAR_WIDTH), (layout.table.height as usize).saturating_sub(HEADER_HEIGHT)) // Subtract Column border and header size
-    
+
     // }
-    
+
     fn render_index(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
         if area.width > 0 {
             let column = &data.index;
-            let rows = column.data.clone().into_iter().map(|row| Row::new(vec![row]).style(self.styles.row)).collect::<Vec<Row>>();
+            let rows = column
+                .data
+                .clone()
+                .into_iter()
+                .map(|row| Row::new(vec![row]).style(self.styles.row))
+                .collect::<Vec<Row>>();
             let width = vec![Constraint::Length(column.width as u16)];
 
-            let header = Row::new(vec![column.name.clone()])
-                .style(self.styles.header);
+            let header = Row::new(vec![column.name.clone()]).style(self.styles.header);
 
-            let table = Table::new(rows, width).header(header)
-                .block(Block::default().borders(Borders::RIGHT).style(self.styles.row));
+            let table = Table::new(rows, width).header(header).block(
+                Block::default()
+                    .borders(Borders::RIGHT)
+                    .style(self.styles.row),
+            );
             frame.render_widget(table, area);
         }
     }
 
     fn render_popup(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
-
         let popup = Popup::default()
             .content(data.popup_message.clone())
             .style(self.styles.popup)
             .title("Key Bindings")
             .title_style(Style::new().white().bold())
             .border_style(Style::new().white().bold());
-        let popup_vertical_margin = (area.height.saturating_sub(data.popup_message.matches("\n").count() as u16 + (POPUP_VERTICAL_MARGIN*2) as u16)) / 2;
+        let popup_vertical_margin = (area.height.saturating_sub(
+            data.popup_message.matches("\n").count() as u16 + (POPUP_VERTICAL_MARGIN * 2) as u16,
+        )) / 2;
         let popup_margin = area.width.saturating_sub(MAX_POPUP_CONTENT_WIDTH as u16) / 2;
-        frame.render_widget(popup, area.inner(Margin {vertical: popup_vertical_margin, horizontal: popup_margin,}));
+        frame.render_widget(
+            popup,
+            area.inner(Margin {
+                vertical: popup_vertical_margin,
+                horizontal: popup_margin,
+            }),
+        );
     }
     fn render_table(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
         let columns = &data.table;
@@ -211,68 +257,97 @@ impl TableUI {
 
             let table = Table::new(rows, widths).header(header);
             frame.render_widget(table, area);
-            return
+            return;
         }
         let mut rows = Vec::new();
         let nrows = data.table[0].data.len(); // Assume there is always at least one column
         for ridx in 0..nrows {
-            rows.push(Row::new(columns.iter().map(|c| c.data[ridx].clone()).collect::<Vec<String>>()).style(self.styles.row));
+            rows.push(
+                Row::new(
+                    columns
+                        .iter()
+                        .map(|c| c.data[ridx].clone())
+                        .collect::<Vec<String>>(),
+                )
+                .style(self.styles.row),
+            );
         }
         // Fill up the rest of the table with empty strings to have the empty part of the table render with the same style.
         for _ in nrows..data.layout.table_height {
             rows.push(Row::new([""].repeat(columns.len())).style(self.styles.row));
         }
-        let widths = columns.iter().map(|c| Constraint::Length(c.width as u16)).collect::<Vec<Constraint>>();
+        let widths = columns
+            .iter()
+            .map(|c| Constraint::Length(c.width as u16))
+            .collect::<Vec<Constraint>>();
 
         //trace!("num rows: {}, nrows {}", rows.len(), nrows);
-        let header = Row::new(columns.iter().map(|c| Cell::from(c.name.clone())).collect::<Vec<Cell>>())
-            .style(self.styles.header);
-        
+        let header = Row::new(
+            columns
+                .iter()
+                .map(|c| Cell::from(c.name.clone()))
+                .collect::<Vec<Cell>>(),
+        )
+        .style(self.styles.header);
+
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-        self.scrollbar_state = self.scrollbar_state.content_length(data.nrows).position(data.abs_selected_row); //.viewport_content_length(1);
+        self.scrollbar_state = self
+            .scrollbar_state
+            .content_length(data.nrows)
+            .position(data.abs_selected_row); //.viewport_content_length(1);
 
         let table = Table::new(rows, widths)
             //.block(Block::new().title("Table"))
             .row_highlight_style(self.styles.selected_row)
             .cell_highlight_style(self.styles.selected_cell)
             .header(header);
-            //.highlight_symbol(">>");
+        //.highlight_symbol(">>");
         //self.table_state.select_column(Some(model.get_selected_column()));
         //self.table_state.select(Some(model.get_selected_row()));
-        self.table_state.select_cell(Some((data.selected_row, data.selected_column)));
+        self.table_state
+            .select_cell(Some((data.selected_row, data.selected_column)));
         frame.render_stateful_widget(table, area, &mut self.table_state);
 
         // using an inner vertical margin of 1 unit makes the scrollbar inside the block
-        frame.render_stateful_widget(scrollbar, area.inner(Margin {vertical: 1, horizontal: 0,}), &mut self.scrollbar_state);
+        frame.render_stateful_widget(
+            scrollbar,
+            area.inner(Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            &mut self.scrollbar_state,
+        );
     }
 
     fn render_statusline(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
-        let mut render_curser = false; 
+        let mut render_curser = false;
         let right = format!("{}/{}", data.abs_selected_row + 1, data.nrows);
         let left = if data.active_cmdinput {
             render_curser = true;
             format!(">{}", data.cmdinput.input)
-        } else if (data.last_status_message_update + STATUS_MESSAGE_DISPLAY_DURATION) - Instant::now() > std::time::Duration::ZERO {
+        } else if (data.last_status_message_update + STATUS_MESSAGE_DISPLAY_DURATION)
+            - Instant::now()
+            > std::time::Duration::ZERO
+        {
             data.status_message.clone()
         } else {
             data.name.clone()
         };
-        
+
         // Use chars().count() instead of .len() to handle multi-byte characters correctly in TUI
         let total_width = area.width as usize;
         let right_len = right.chars().count();
-        
+
         // This format string says: Left-align 'left' in a space of (total_width - right_len)
         let status_string = format!(
-            "{:<width$}{}", 
-            left, 
-            right, 
+            "{:<width$}{}",
+            left,
+            right,
             width = total_width.saturating_sub(right_len)
         );
 
-        let status_bar = Paragraph::new(status_string)
-            .style(self.styles.statusline);
-            
+        let status_bar = Paragraph::new(status_string).style(self.styles.statusline);
+
         frame.render_widget(status_bar, area);
 
         if render_curser {

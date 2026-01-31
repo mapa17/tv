@@ -1,7 +1,6 @@
-
-use std::io::Error;
 use polars::error::PolarsError;
 use ratatui::crossterm::event;
+use std::io::Error;
 
 // This is a custom error type that we will be using in `parse_pos_nonzero()`.
 #[derive(Debug)]
@@ -15,25 +14,24 @@ pub enum TVError {
     DataIndexingError(String),
 }
 
-
 impl From<Error> for TVError {
     fn from(err: Error) -> Self {
         TVError::IoError(err)
-    } 
+    }
 }
 
 impl From<PolarsError> for TVError {
     fn from(err: PolarsError) -> Self {
         TVError::PolarsError(err)
-    } 
+    }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct TVConfig {
     pub event_poll_time: usize,
     pub max_column_width: usize,
     pub column_margin: usize,
+    pub light_colors: bool,
 }
 
 #[derive(PartialEq, Debug)]
@@ -49,8 +47,9 @@ pub enum Message {
     MoveToLastColumn,
     MoveBeginning,
     ToggleColumnState,
+    ToggleExpandColumnState,
     ToggleIndex,
-    Resize(usize, usize,),
+    Resize(usize, usize),
     CopyCell,
     CopyRow,
     Help,
@@ -64,8 +63,9 @@ pub enum Message {
     SearchNext,
     SearchPrev,
     RawKey(event::KeyEvent),
+    SortAscending,
+    SortDescending,
 }
-
 
 pub const HELP_TEXT: &str = "
     q           : Quit
@@ -91,6 +91,8 @@ pub const HELP_TEXT: &str = "
     p           : Jump to previous search result
     |           : Filter table on matches in the current column
     F           : Show histogram of current column
+    [           : Sort in ascending order
+    ]           : Sort in descending order
 
 
                 == Record View ==
