@@ -1,12 +1,12 @@
 use std::time::Duration;
 use tracing::trace;
 
-use ratatui::crossterm::event::{self, KeyCode, KeyModifiers};
-use crate::domain::{TVConfig, TVError, Message};
+use crate::domain::{Message, TVConfig, TVError};
 use crate::model::Model;
+use ratatui::crossterm::event::{self, KeyCode, KeyModifiers};
 
 pub struct Controller {
-    event_poll_time: usize
+    event_poll_time: usize,
 }
 
 impl Controller {
@@ -22,7 +22,7 @@ impl Controller {
                 // Detect frame resize event
                 event::Event::Resize(width, height) => {
                     trace!("Resized to {}x{}", width, height);
-                    return Ok(Some(Message::Resize(width as usize, height as usize))); 
+                    return Ok(Some(Message::Resize(width as usize, height as usize)));
                 }
                 event::Event::Key(key) if key.kind == event::KeyEventKind::Press => {
                     if model.raw_keyevents() {
@@ -45,10 +45,12 @@ impl Controller {
             (KeyCode::Down, KeyModifiers::NONE) => Some(Message::MoveDown),
             (KeyCode::Char('J'), KeyModifiers::SHIFT) => Some(Message::MovePageDown),
             (KeyCode::Down, KeyModifiers::SHIFT) => Some(Message::MovePageDown),
+            (KeyCode::PageDown, KeyModifiers::NONE) => Some(Message::MovePageDown),
             (KeyCode::Char('k'), KeyModifiers::NONE) => Some(Message::MoveUp),
             (KeyCode::Up, KeyModifiers::NONE) => Some(Message::MoveUp),
             (KeyCode::Char('K'), KeyModifiers::SHIFT) => Some(Message::MovePageUp),
             (KeyCode::Up, KeyModifiers::SHIFT) => Some(Message::MovePageUp),
+            (KeyCode::PageUp, KeyModifiers::NONE) => Some(Message::MovePageUp),
             (KeyCode::Char('l'), KeyModifiers::NONE) => Some(Message::MoveRight),
             (KeyCode::Right, KeyModifiers::NONE) => Some(Message::MoveRight),
             (KeyCode::Char('G'), KeyModifiers::SHIFT) => Some(Message::MoveEnd),
@@ -59,6 +61,7 @@ impl Controller {
             (KeyCode::Up, KeyModifiers::CONTROL) => Some(Message::MoveBeginning),
             (KeyCode::Char('v'), KeyModifiers::NONE) => Some(Message::ToggleIndex),
             (KeyCode::Tab, KeyModifiers::NONE) => Some(Message::ToggleColumnState),
+            (KeyCode::BackTab, KeyModifiers::SHIFT) => Some(Message::ToggleExpandColumnState),
             (KeyCode::Char('y'), KeyModifiers::NONE) => Some(Message::CopyCell),
             (KeyCode::Char('Y'), KeyModifiers::SHIFT) => Some(Message::CopyRow),
             (KeyCode::Char('?'), KeyModifiers::NONE) => Some(Message::Help),
@@ -68,6 +71,8 @@ impl Controller {
             (KeyCode::Char('F'), KeyModifiers::SHIFT) => Some(Message::Histogram),
             (KeyCode::Char('n'), KeyModifiers::NONE) => Some(Message::SearchNext),
             (KeyCode::Char('p'), KeyModifiers::NONE) => Some(Message::SearchPrev),
+            (KeyCode::Char('['), KeyModifiers::NONE) => Some(Message::SortAscending),
+            (KeyCode::Char(']'), KeyModifiers::NONE) => Some(Message::SortDescending),
             (KeyCode::Char('0'), KeyModifiers::NONE) => Some(Message::MoveToFirstColumn),
             (KeyCode::Left, KeyModifiers::SHIFT) => Some(Message::MoveToFirstColumn),
             (KeyCode::Home, KeyModifiers::NONE) => Some(Message::MoveToFirstColumn),
@@ -81,5 +86,4 @@ impl Controller {
         trace!("Mapped: {key:?} => {message:?}");
         message
     }
-
 }

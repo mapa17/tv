@@ -1,26 +1,27 @@
-use std::process::ExitCode;
 use std::path::PathBuf;
+use std::process::ExitCode;
 
-use tracing_subscriber::{self, EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
-use tracing_error::ErrorLayer;
+use clap::Parser;
 use tracing::info;
-use clap::{Parser};
+use tracing_error::ErrorLayer;
+use tracing_subscriber::{self, EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
-mod model;
-mod ui;
-mod domain;
 mod controller;
-mod popup;
+mod domain;
 mod inputter;
+mod model;
+mod popup;
+mod ui;
 
+use controller::Controller;
 use domain::{TVConfig, TVError};
 use model::{Model, Status};
 use ui::TableUI;
-use controller::Controller;
 
 fn main() -> ExitCode {
     match run() {
         Err(e) => {
+            ratatui::restore();
             eprintln!("Error: {:?}", e);
             ExitCode::FAILURE
         }
@@ -34,22 +35,25 @@ fn main() -> ExitCode {
 pub fn initialize_logging(_cfg: &TVConfig, args: &TVArguments) -> Result<(), std::io::Error> {
     //let log_path = shellexpand::full(args.log);
     let log_path = PathBuf::from(
-    shellexpand::full(&args.log.to_string_lossy())
-        .unwrap()
-        .to_string()
+        shellexpand::full(&args.log.to_string_lossy())
+            .unwrap()
+            .to_string(),
     );
     // Create parent directories if they don't exist
     if let Some(parent) = log_path.parent() {
         match std::fs::create_dir_all(parent) {
             Ok(_) => (),
             Err(e) => {
-                println!("Creating directories for log file failed! Log path {:?}", log_path.parent());
+                println!(
+                    "Creating directories for log file failed! Log path {:?}",
+                    log_path.parent()
+                );
                 return Err(e);
             }
         }
     }
 
-    let log_file = match std::fs::File::create(log_path.clone()){
+    let log_file = match std::fs::File::create(log_path.clone()) {
         Ok(file) => file,
         Err(e) => {
             println!("Creating log file failed! Log path {:?}", log_path);
@@ -57,27 +61,28 @@ pub fn initialize_logging(_cfg: &TVConfig, args: &TVArguments) -> Result<(), std
         }
     };
     let log_level = match args.verbose {
-        0 => "warning", 
-        1 => "info", 
-        2 => "debug", 
-        3 => "trace", 
+        0 => "warning",
+        1 => "info",
+        2 => "debug",
+        3 => "trace",
         _ => "trace",
     };
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(log_level));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level));
 
     let file_subscriber = tracing_subscriber::fmt::layer()
-    .with_file(true)
-    .with_line_number(true)
-    .with_writer(log_file)
-    .with_target(false)
-    .with_ansi(false)
-    .with_filter(filter);
+        .with_file(true)
+        .with_line_number(true)
+        .with_writer(log_file)
+        .with_target(false)
+        .with_ansi(false)
+        .with_filter(filter);
 
-    tracing_subscriber::registry().with(file_subscriber).with(ErrorLayer::default()).init();
+    tracing_subscriber::registry()
+        .with(file_subscriber)
+        .with(ErrorLayer::default())
+        .init();
     Ok(())
 }
-
 
 #[derive(Parser)]
 #[command(name = "TV")]
@@ -88,67 +93,74 @@ struct Cli {
     file: PathBuf,
 
     /// Sets location of log file
-    #[arg(short, long, value_name = "LOG", default_value="~/.cache/tv/tv.log")]
+    #[arg(short, long, value_name = "LOG", default_value = "~/.cache/tv/tv.log")]
     log: PathBuf,
 
     /// Turn debugging information on
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
 
-    //#[command(subcommand)]
-    //command: Option<Commands>,
+    /// Enable bright color scheme
+    #[arg(short, long, default_value = "false")]
+    bright_colors: bool,
 }
 
 struct TVArguments {
     filepath: PathBuf,
     log: PathBuf,
     verbose: u8,
+    light_colors: bool,
 }
 
 fn arg_parser() -> TVArguments {
     let cli = Cli::parse();
 
-    TVArguments { filepath: cli.file, log: cli.log, verbose: cli.verbose }
+    TVArguments {
+        filepath: cli.file,
+        log: cli.log,
+        verbose: cli.verbose,
+        light_colors: cli.bright_colors,
+    }
 }
 
 fn run() -> Result<(), TVError> {
-    let cfg = TVConfig{
+    let mut cfg = TVConfig {
         event_poll_time: 100,
         max_column_width: 25,
         column_margin: 1,
+        light_colors: true,
     };
 
-    let args = arg_parser(); 
+    let args = arg_parser();
+    cfg.light_colors = args.light_colors;
     initialize_logging(&cfg, &args)?;
     info!("Starting tv!");
-   
+
     let mut terminal = ratatui::init();
     let mut ui = TableUI::new(&cfg);
 
     // Start by telling the model about the actual ui size
     let area = terminal.get_frame().area();
 
-    let mut model = Model::init(&cfg, area.width as usize, area.height as usize)?; 
+    let mut model = Model::init(&cfg, area.width as usize, area.height as usize)?;
     let uidata = model.get_uidata();
     terminal.draw(|f| ui.draw(uidata, f))?;
 
-    model.load_data_file(args.filepath)?; 
- 
+    model.load_data_file(args.filepath)?;
+
     let controller = Controller::new(&cfg);
     while model.status != Status::QUITTING {
-        let message = controller.handle_event(&model)?; 
+        let message = controller.handle_event(&model)?;
         model.update(message)?;
 
         let uidata = model.get_uidata();
         if ui.needs_redrawing(uidata) {
             terminal.draw(|f| ui.draw(uidata, f))?;
         }
-
-    };
+    }
 
     Ok(())
 }
-
 
 // #[cfg(test)]
 // mod tests {
