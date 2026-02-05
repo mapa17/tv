@@ -7,7 +7,7 @@ use ratatui::widgets::{
 use ratatui::{Frame, layout::Rect};
 use std::time::Instant;
 
-use crate::domain::{CMDMode, TVConfig};
+use crate::domain::TVConfig;
 use crate::model::{UIData, UILayout};
 use crate::popup::Popup;
 

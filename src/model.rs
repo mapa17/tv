@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::Instant;
 use tracing::{debug, error, info, trace};
 
@@ -1173,9 +1172,9 @@ impl Model {
 
         let search_duration = start_time.elapsed().as_millis();
 
-        if matching_rows.len() == 0 {
+        if matching_rows.is_empty() {
             table.search_results.clear();
-            self.set_status_message(format!("Found no matches!"));
+            self.set_status_message("Found no matches!".to_string());
         } else {
             // Sort by rows
             table.search_results = matching_rows.into_iter().collect();
