@@ -69,7 +69,7 @@ impl Controller {
             (KeyCode::Char('f'), KeyModifiers::NONE) => Some(Message::Search),
             (KeyCode::Char('F'), KeyModifiers::SHIFT) => Some(Message::SearchInColumn),
             (KeyCode::Char('|'), KeyModifiers::NONE) => Some(Message::Filter),
-            (KeyCode::Char('u'), KeyModifiers::SHIFT) => Some(Message::Histogram),
+            (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Message::Histogram),
             (KeyCode::Char('n'), KeyModifiers::NONE) => Some(Message::SearchNext),
             (KeyCode::Char('p'), KeyModifiers::NONE) => Some(Message::SearchPrev),
             (KeyCode::Char('['), KeyModifiers::NONE) => Some(Message::SortAscending),
