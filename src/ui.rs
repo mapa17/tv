@@ -7,7 +7,7 @@ use ratatui::widgets::{
 use ratatui::{Frame, layout::Rect};
 use std::time::Instant;
 
-use crate::domain::TVConfig;
+use crate::domain::{CMDMode, TVConfig};
 use crate::model::{UIData, UILayout};
 use crate::popup::Popup;
 
@@ -321,17 +321,26 @@ impl TableUI {
 
     fn render_statusline(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
         let mut render_curser = false;
+        let mut prompt = String::new();
+
         let right = format!("{}/{}", data.abs_selected_row + 1, data.nrows);
-        let left = if data.active_cmdinput {
-            render_curser = true;
-            format!(">{}", data.cmdinput.input)
-        } else if (data.last_status_message_update + STATUS_MESSAGE_DISPLAY_DURATION)
-            - Instant::now()
-            > std::time::Duration::ZERO
-        {
-            data.status_message.clone()
-        } else {
-            data.name.clone()
+        let left = match data.cmd_mode {
+            Some(mode) => {
+                render_curser = true;
+                prompt = mode.prompt().to_string();
+
+                format!("{}{}", prompt, data.cmdinput.input)
+            }
+            None => {
+                if (data.last_status_message_update + STATUS_MESSAGE_DISPLAY_DURATION)
+                    - Instant::now()
+                    > std::time::Duration::ZERO
+                {
+                    data.status_message.clone()
+                } else {
+                    data.name.clone()
+                }
+            }
         };
 
         // Use chars().count() instead of .len() to handle multi-byte characters correctly in TUI
@@ -351,7 +360,10 @@ impl TableUI {
         frame.render_widget(status_bar, area);
 
         if render_curser {
-            let curser_pos = Position::new(area.x + data.cmdinput.curser_pos as u16 + 1, area.y);
+            let curser_pos = Position::new(
+                area.x + data.cmdinput.curser_pos as u16 + prompt.len() as u16,
+                area.y,
+            );
             frame.set_cursor_position(curser_pos);
         }
     }
