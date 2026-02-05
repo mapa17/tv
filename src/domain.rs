@@ -14,6 +14,25 @@ pub enum TVError {
     DataIndexingError(String),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum CMDMode {
+    SearchTable,
+    SearchInColumn,
+    FilterByColumn,
+    Raw,
+}
+
+impl CMDMode {
+    pub fn prompt(&self) -> &'static str {
+        match self {
+            CMDMode::SearchTable => "Search table:",
+            CMDMode::SearchInColumn => "Search column:",
+            CMDMode::FilterByColumn => "Filter column:",
+            CMDMode::Raw => "CMD:",
+        }
+    }
+}
+
 impl From<Error> for TVError {
     fn from(err: Error) -> Self {
         TVError::IoError(err)
@@ -54,7 +73,8 @@ pub enum Message {
     CopyRow,
     Help,
     EnterCommand,
-    Find,
+    Search,
+    SearchInColumn,
     Filter,
     Histogram,
     Enter,
@@ -86,11 +106,12 @@ pub const HELP_TEXT: &str = "
     y           : Copy cell value
     Y           : Copy row
     Tab         : Expand/Collapse column
-    /           : Search in complete table
+    f           : Search in complete table
+    F           : Search in current column
     n           : Jump to next search result
     p           : Jump to previous search result
     |           : Filter table on matches in the current column
-    F           : Show histogram of current column
+    u           : Show histogram of current column
     [           : Sort in ascending order
     ]           : Sort in descending order
 

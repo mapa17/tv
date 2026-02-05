@@ -1,9 +1,12 @@
 [package]
 name = "tv"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.6"
 edition = "2024"
 description = "A tui based tabular data viewer."
 authors = ["Manuel Pasieka <manuel.pasieka@protonmail.ch>"]
+homepage = "https://github.com/mapa17/tv"
+repository = "https://github.com/mapa17/tv"
+license = "MIT"
 
 [dependencies]
 arboard = "3.6.1"

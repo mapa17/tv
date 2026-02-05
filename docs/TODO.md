@@ -21,3 +21,5 @@
 [x] Bug: The index column should show the index in the column data, not the current table index
 [x] Bug: Long search input crashes at src/inputter.rs::92:32 -> Its not about long inputs, its about unicode characters?
 [x] Bug: Search crashes if nothing was found
+[ ] Bug: Copy does not work after sorting (wrong record id?)
+[ ] Feat: Search only in current column

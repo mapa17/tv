@@ -6,10 +6,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Instant;
 use tracing::{debug, error, info, trace};
 
-use crate::domain::{HELP_TEXT, Message, TVConfig, TVError};
+use crate::domain::{CMDMode, HELP_TEXT, Message, TVConfig, TVError};
 use crate::inputter::{InputResult, Inputter};
 use crate::ui::{
     CMDLINE_HEIGH, COLUMN_WIDTH_COLLAPSED_COLUMN, COLUMN_WIDTH_MARGIN, SCROLLBAR_WIDTH,
@@ -242,6 +243,7 @@ pub struct UIData {
     pub layout: UILayout,
     pub last_update: Instant,
     pub cmdinput: InputResult,
+    pub cmd_mode: Option<CMDMode>,
     pub active_cmdinput: bool,
     pub status_message: String,
     pub last_status_message_update: Instant,
@@ -266,6 +268,7 @@ impl UIData {
             layout: UILayout::default(),
             last_update: Instant::now(),
             cmdinput: InputResult::default(),
+            cmd_mode: None,
             active_cmdinput: false,
             status_message: String::new(),
             last_status_message_update: Instant::now(),
@@ -336,6 +339,7 @@ pub struct Model {
     uidata: UIData,
     clipboard: Clipboard,
     input: Inputter,
+    cmd_mode: Option<CMDMode>,
     last_input: InputResult,
     active_cmdinput: bool,
     status_message: String,
@@ -360,6 +364,7 @@ impl Model {
             uidata: UIData::empty(), // TODO: find out how to do this better. How can i in a factory function create an object that relies on self to exit?
             clipboard: Clipboard::new().unwrap(),
             input: Inputter::default(),
+            cmd_mode: None,
             last_input: InputResult::default(),
             active_cmdinput: false,
             status_message: "Started tv!".to_string(),
@@ -433,6 +438,7 @@ impl Model {
             abs_selected_row: record.record_idx, // In the record view, show which record we are looking at instead of line in record view.
             layout: self.uilayout.clone(),
             cmdinput: self.last_input.clone(),
+            cmd_mode: self.uidata.cmd_mode,
             active_cmdinput: self.active_cmdinput,
             last_update: Instant::now(),
             status_message: self.status_message.clone(),
@@ -459,6 +465,7 @@ impl Model {
                 popup_message: String::new(),
                 layout: self.uilayout.clone(),
                 cmdinput: self.last_input.clone(),
+                cmd_mode: self.uidata.cmd_mode,
                 active_cmdinput: self.active_cmdinput,
                 last_update: Instant::now(),
                 status_message: self.status_message.clone(),
@@ -920,9 +927,10 @@ impl Model {
                     Message::CopyCell => self.copy_table_cell(),
                     Message::CopyRow => self.copy_table_row(),
                     Message::Help => self.show_help(),
-                    Message::EnterCommand => self.enter_cmd_mode(""),
-                    Message::Find => self.enter_cmd_mode("/"),
-                    Message::Filter => self.enter_cmd_mode("|"),
+                    Message::EnterCommand => self.enter_cmd_mode(CMDMode::Raw),
+                    Message::Search => self.enter_cmd_mode(CMDMode::SearchTable),
+                    Message::Filter => self.enter_cmd_mode(CMDMode::FilterByColumn),
+                    Message::SearchInColumn => self.enter_cmd_mode(CMDMode::SearchInColumn),
                     Message::Enter => self.enter(),
                     Message::Exit => self.exit(),
                     Message::Histogram => self.build_histogram_view(),
@@ -1068,24 +1076,26 @@ impl Model {
                 self.handle_cmd_input();
             }
             self.uidata.cmdinput = self.last_input.clone();
+            self.uidata.cmd_mode = self.cmd_mode;
             self.uidata.last_update = Instant::now();
         }
     }
 
-    fn enter_cmd_mode(&mut self, prefix: &str) {
+    fn enter_cmd_mode(&mut self, mode: CMDMode) {
         trace!("Entering command mode ...");
         self.previous_modus = self.modus;
         self.modus = Modus::CMDINPUT;
+        self.cmd_mode = Some(mode);
 
         self.active_cmdinput = true;
         self.input.clear();
         self.last_input = self.input.get();
-        self.input.set(prefix);
 
         self.last_input = self.input.get();
         self.uidata.cmdinput = self.last_input.clone();
         self.uidata.active_cmdinput = self.active_cmdinput;
         self.uidata.last_update = Instant::now();
+        self.uidata.cmd_mode = self.cmd_mode;
     }
 
     fn handle_cmd_input(&mut self) {
@@ -1099,22 +1109,27 @@ impl Model {
         self.uidata.active_cmdinput = self.active_cmdinput;
         self.last_update = Instant::now();
 
-        let cmd = self.last_input.input.clone();
-        match cmd.as_str() {
-            s if s.starts_with('/') => {
-                let search_term = &s[1..]; // Skip the '/'
-                self.search(search_term);
+        let cmd_input = self.last_input.input.clone();
+        match self.cmd_mode {
+            Some(CMDMode::SearchTable) => {
+                self.search(&cmd_input, false);
             }
-            s if s.starts_with('|') => {
-                let filter_term = &s[1..];
-                self.filter(filter_term);
+            Some(CMDMode::FilterByColumn) => {
+                self.filter(&cmd_input);
             }
-            s if s.starts_with(':') => {
-                let _cmd_term = &s[1..];
-                //self.filter(cmd_term);
+            Some(CMDMode::SearchInColumn) => {
+                // TODO: Implement search in current column
+                self.search(&cmd_input, true);
             }
-            _ => trace!("Unknown command"),
+            Some(CMDMode::Raw) => {
+                info!("Raw cmd mode {cmd_input}")
+            }
+            None => {
+                info!("Cmd mode is none!")
+            }
         }
+
+        self.cmd_mode = None;
     }
 
     // Return mask index positions of rows in the column that match given term
@@ -1128,24 +1143,33 @@ impl Model {
         matches
     }
 
-    fn search(&mut self, term: &str) {
+    fn search(&mut self, term: &str, current_column_only: bool) {
         trace!("Starting search for {} ...", term);
         let table = self.tables.last_mut().unwrap();
         let start_time = Instant::now();
 
         let mask = Arc::clone(&table.rows);
         let search_term = term.to_string();
-        let columns = Arc::new(&self.data);
-        let matching_rows: Vec<(usize, usize)> = columns
-            .par_iter()
-            .enumerate()
-            .flat_map(|(col_idx, column)| {
-                Self::search_column(&search_term, column, &mask)
-                    .into_iter()
-                    .map(move |row_idx| (row_idx, col_idx))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
+
+        let matching_rows: Vec<(usize, usize)> = if current_column_only {
+            let current_col_idx = table.curser_column + table.offset_column;
+            Self::search_column(&search_term, &self.data[current_col_idx], &mask)
+                .into_iter()
+                .map(|row_idx| (row_idx, current_col_idx))
+                .collect()
+        } else {
+            let columns = &self.data;
+            columns
+                .par_iter()
+                .enumerate()
+                .flat_map(|(col_idx, column)| {
+                    Self::search_column(&search_term, column, &mask)
+                        .into_iter()
+                        .map(move |row_idx| (row_idx, col_idx))
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        };
 
         let search_duration = start_time.elapsed().as_millis();
 
@@ -1351,7 +1375,9 @@ impl Model {
 
     fn copy_table_cell(&mut self) {
         let table = self.tables.last().unwrap();
-        let cell = self.uidata.table[table.curser_column].data[table.curser_row].clone();
+        let row = table.rows[table.offset_row + table.curser_row];
+        let column = table.offset_column + table.curser_column;
+        let cell = self.data[column].data[row].clone();
         trace!("Cell content: {}", cell);
 
         match self.clipboard.set_text(cell) {
@@ -1360,18 +1386,30 @@ impl Model {
         }
     }
 
+    fn wrap_cell_content(c: &String) -> String {
+        let needs_escaping = c.chars().any(|c| c == '"');
+        let needs_wrapping = c.chars().any(|c| c == ' ' || c == '\t' || c == ',');
+        let mut out = String::from(c);
+
+        if needs_escaping {
+            out = out.replace("\"", "\"\"");
+        }
+        if needs_wrapping {
+            out = format!("\"{out}\"");
+        }
+        out
+    }
+
     fn copy_table_row(&mut self) {
         let table = self.tables.last().unwrap();
-        let row = table.offset_row + table.curser_row;
+        let row = table.rows[table.offset_row + table.curser_row];
 
         let content = self
             .data
             .iter()
-            .map(|c| c.data[row].clone())
+            .map(|c| Model::wrap_cell_content(&c.data[row]))
             .collect::<Vec<String>>();
-        let row_content = content.join("; ");
-
-        trace!("Row content: {}", row_content);
+        let row_content = content.join(",");
 
         match self.clipboard.set_text(row_content) {
             Ok(_) => trace!("Copied cell content to clipboard."),
