@@ -1,5 +1,4 @@
 use ratatui::crossterm::event::{self, KeyCode, KeyModifiers};
-use tracing::trace;
 
 #[derive(Default)]
 pub struct Inputter {
