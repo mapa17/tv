@@ -27,7 +27,7 @@ tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
 [dev-dependencies]
-husky-rs = "0.2.2"
+husky-rs = "0.3.2"
 # Add car
 # cargo-audit
 
