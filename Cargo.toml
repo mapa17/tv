@@ -12,7 +12,7 @@ license = "MIT"
 arboard = "3.6.1"
 clap = { version = "4.5.54", features = ["derive"] }
 derive_setters = "0.1.8"
-polars = { version = "0.52.0", features = [
+polars = { version = "0.53.0", features = [
     "lazy",
     "csv",
     "timezones",
