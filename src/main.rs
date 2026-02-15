@@ -11,12 +11,12 @@ mod domain;
 mod inputter;
 mod model;
 mod popup;
-mod ui;
+mod tui;
 
 use controller::Controller;
 use domain::{TVConfig, TVError};
 use model::{Model, Status};
-use ui::TableUI;
+use tui::TableUI;
 
 fn main() -> ExitCode {
     match run() {
