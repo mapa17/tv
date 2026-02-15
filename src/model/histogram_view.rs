@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Instant};
 
 use tracing::trace;
 
-use crate::model::{Column, TableView, UIData, UILayout};
+use crate::model::{Column, TableView, UIData};
 
 use super::ColumnView;
 
@@ -50,7 +50,7 @@ impl HistogramView {
         table: &TableView,
     ) {
         trace!("Calculate histogram for column {}", column_idx);
-        if !self.column_histograms.contains_key(&column_idx) {
+        self.column_histograms.entry(column_idx).or_insert_with(|| {
             let column_data = &data[column_idx].data;
 
             let mut counts: HashMap<String, usize> = HashMap::new();
@@ -62,8 +62,8 @@ impl HistogramView {
             sorted.sort_unstable();
             sorted.reverse();
             let (counts, values): (Vec<usize>, Vec<String>) = sorted.into_iter().unzip();
-            self.column_histograms.insert(column_idx, (counts, values));
-        }
+            (counts, values)
+        });
     }
 
     pub fn update(

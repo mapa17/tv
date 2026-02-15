@@ -240,7 +240,7 @@ impl TableUI {
     }
     fn render_table(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
         let columns = &data.table;
-        if columns.is_empty() || columns[0].data.len() == 0 {
+        if columns.is_empty() || columns[0].data.is_empty() {
             // Render an empty table
             let mut rows = Vec::new();
             for _ in 0..data.layout.table_height {

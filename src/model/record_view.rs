@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use tracing::trace;
 
-use crate::model::{UIData, UILayout, table_view::TableView};
+use crate::model::{UIData, table_view::TableView};
 
 use super::{Column, ColumnView};
 
@@ -66,7 +66,7 @@ impl RecordView {
             .unwrap_or(0);
         record.row_width = record.width - record.header_width;
         record.update(table.curser_row + table.offset_row, table, data, uidata);
-        return record;
+        record
     }
 
     pub fn next_record(&mut self, table: &TableView, data: &mut Vec<Column>, uidata: &mut UIData) {

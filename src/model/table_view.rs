@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Instant};
 use tracing::{error, trace};
 
 use crate::{
-    model::{Column, Model, UIData, UILayout, column_view::ColumnStatus},
+    model::{Column, UIData, UILayout, column_view::ColumnStatus},
     tui::{COLUMN_WIDTH_COLLAPSED_COLUMN, COLUMN_WIDTH_MARGIN},
 };
 
@@ -72,14 +72,14 @@ impl TableView {
             .map(|c| Self::wrap_cell_content(&c.data[row]))
             .collect::<Vec<String>>();
         let row_content = content.join(",");
-        return row_content;
+        row_content
     }
 
     pub fn get_current_cell(&self, data: &Vec<Column>) -> String {
         let row = self.rows[self.offset_row + self.curser_row];
         let column = self.offset_column + self.curser_column;
         let cell = data[column].data[row].clone();
-        return cell;
+        cell
     }
 
     pub fn toggle_column_status(&mut self, data: &mut Vec<Column>, toggle_to_expand: bool) {
@@ -279,7 +279,7 @@ impl TableView {
 
         if matching_rows.is_empty() {
             self.search_results.clear();
-            return 0;
+            0
         } else {
             // Sort by rows
             self.search_results = matching_rows.into_iter().collect();
@@ -300,7 +300,7 @@ impl TableView {
             );
 
             self.search_next(0, data, layout, uidata);
-            return self.search_results.len();
+            self.search_results.len()
         }
     }
 
@@ -345,7 +345,7 @@ impl TableView {
                 column
             );
         }
-        return next_match_idx;
+        next_match_idx
     }
 
     fn build_index(&mut self) {

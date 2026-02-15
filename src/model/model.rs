@@ -2,22 +2,17 @@ use arboard::Clipboard;
 use polars::prelude::*;
 use ratatui::crossterm::event::KeyEvent;
 use rayon::prelude::*;
-use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace};
 
 use crate::domain::{CMDMode, HELP_TEXT, Message, TVConfig, TVError};
 use crate::inputter::{InputResult, Inputter};
-use crate::tui::{
-    CMDLINE_HEIGH, COLUMN_WIDTH_COLLAPSED_COLUMN, COLUMN_WIDTH_MARGIN, SCROLLBAR_WIDTH,
-    TABLE_HEADER_HEIGHT,
-};
 
 use super::{
-    Column, ColumnStatus, ColumnView, HistogramView, RecordView, TableView, UIData, UILayout,
+    Column, ColumnStatus, HistogramView, RecordView, TableView, UIData, UILayout,
 };
 
 // A struct with different types
@@ -192,7 +187,6 @@ impl Model {
     fn update_table_data(&mut self) {
         // If the model is empty, there is nothing to do.
         if self.tables.is_empty() || self.data.is_empty() {
-            return;
         } else {
             let table = self.tables.last_mut().unwrap();
             table.update(&mut self.data, &self.uilayout, &mut self.uidata);
@@ -275,7 +269,7 @@ impl Model {
                 error!("Loading CSV failed! Fallback, trying to load in UTF8 lossy mode.");
                 // Fallback: read as bytes and replace invalid UTF-8
                 let bytes = std::fs::read(path).map_err(|e| PolarsError::IO {
-                    error: std::io::Error::from(e).into(),
+                    error: e.into(),
                     msg: None,
                 })?;
                 let content = String::from_utf8_lossy(&bytes);
@@ -447,7 +441,7 @@ impl Model {
                 //self.build_record_view(record_idx);
                 self.record_view = RecordView::new(
                     table,
-                    &mut self.data,
+                    &self.data,
                     &mut self.uidata,
                     self.config.max_column_width,
                 );
@@ -592,7 +586,7 @@ impl Model {
     fn search_next(&mut self, step: i32) {
         let table = self.tables.last_mut().unwrap();
         if table.search_results.is_empty() {
-            self.set_status_message(format!("Empty search results!"));
+            self.set_status_message("Empty search results!".to_string());
         } else {
             let next_match_idx =
                 table.search_next(step, &mut self.data, &self.uilayout, &mut self.uidata);
