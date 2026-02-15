@@ -71,14 +71,14 @@ impl TableView {
             .iter()
             .map(|c| Self::wrap_cell_content(&c.data[row]))
             .collect::<Vec<String>>();
-        
+
         content.join(",")
     }
 
     pub fn get_current_cell(&self, data: &Vec<Column>) -> String {
         let row = self.rows[self.offset_row + self.curser_row];
         let column = self.offset_column + self.curser_column;
-        
+
         data[column].data[row].clone()
     }
 
