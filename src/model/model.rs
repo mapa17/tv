@@ -11,9 +11,7 @@ use tracing::{debug, error, info, trace};
 use crate::domain::{CMDMode, HELP_TEXT, Message, TVConfig, TVError};
 use crate::inputter::{InputResult, Inputter};
 
-use super::{
-    Column, ColumnStatus, HistogramView, RecordView, TableView, UIData, UILayout,
-};
+use super::{Column, ColumnStatus, HistogramView, RecordView, TableView, UIData, UILayout};
 
 // A struct with different types
 #[derive(Debug)]

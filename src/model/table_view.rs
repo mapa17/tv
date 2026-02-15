@@ -71,15 +71,15 @@ impl TableView {
             .iter()
             .map(|c| Self::wrap_cell_content(&c.data[row]))
             .collect::<Vec<String>>();
-        let row_content = content.join(",");
-        row_content
+        
+        content.join(",")
     }
 
     pub fn get_current_cell(&self, data: &Vec<Column>) -> String {
         let row = self.rows[self.offset_row + self.curser_row];
         let column = self.offset_column + self.curser_column;
-        let cell = data[column].data[row].clone();
-        cell
+        
+        data[column].data[row].clone()
     }
 
     pub fn toggle_column_status(&mut self, data: &mut Vec<Column>, toggle_to_expand: bool) {
