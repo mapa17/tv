@@ -1,0 +1,32 @@
+# This file tells rustup which Rust toolchain to use
+# when working inside this project directory.
+#
+# It ensures all developers and CI use the same compiler
+# and required built-in tooling.
+
+[toolchain]
+
+# Pin an exact Rust version for reproducible builds.
+# Avoid "stable" for teams — it changes over time.
+#channel = "1.76.0"
+channel = "stable"
+
+# Install additional rustup components automatically.
+# These are NOT cargo tools — they are part of the Rust toolchain.
+components = [
+    "clippy",  # Linter used in CI / pre-commit via husky
+    "rustfmt", # Ensures consistent formatting
+]
+
+# Keep install lightweight.
+# Installs compiler + cargo + specified components only.
+profile = "minimal"
+
+# Optional: add cross-compilation targets if needed
+# targets = ["wasm32-unknown-unknown"]
+
+targets = [
+    "x86-64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "x86_64-pc-windows-gnu",
+]
