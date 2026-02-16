@@ -185,6 +185,7 @@ impl Model {
     fn update_table_data(&mut self) {
         // If the model is empty, there is nothing to do.
         if self.tables.is_empty() || self.data.is_empty() {
+            // Does self.uidata need some work?
         } else {
             let table = self.tables.last_mut().unwrap();
             table.update(&mut self.data, &self.uilayout, &mut self.uidata);
@@ -780,17 +781,12 @@ impl Model {
 
     fn move_histogram_selection_up(&mut self, size: usize) {
         let hist = &mut self.histogram_view;
-        if hist.curser_row > 0 {
-            // Curser somewhere in the middle
-            hist.curser_row = hist.curser_row.saturating_sub(size);
-        } else {
-            // Curser at the top
-            if hist.curser_offset > 0 {
-                // Shift table up
-                hist.curser_offset = hist.curser_offset.saturating_sub(size);
-            }
-        }
-        self.update_histogram();
+        hist.move_selection_up(
+            size,
+            &mut self.data,
+            self.tables.last().unwrap(),
+            &mut self.uidata,
+        );
     }
 
     fn move_record_selection_down(&mut self, size: usize) {
@@ -801,21 +797,12 @@ impl Model {
 
     fn move_histogram_selection_down(&mut self, size: usize) {
         let hist = &mut self.histogram_view;
-        if hist.curser_row + hist.curser_offset < (hist.value_data.len() - 1) {
-            // Somewhere in the middle
-            if hist.curser_row < hist.height - 1 {
-                // Somewhere in the middle of the table
-                hist.curser_row =
-                    std::cmp::min(hist.curser_row + size, hist.value_view.data.len() - 1);
-            } else {
-                // At the bottom of the table, need to shift table down
-                hist.curser_offset =
-                    std::cmp::min(hist.curser_offset + size, hist.value_data.len() - 1);
-                hist.curser_row =
-                    std::cmp::min(hist.height - 1, hist.value_data.len() - hist.curser_offset);
-            }
-            self.update_histogram();
-        }
+        hist.move_selection_down(
+            size,
+            &mut self.data,
+            self.tables.last().unwrap(),
+            &mut self.uidata,
+        )
     }
 
     fn previous_record(&mut self) {

@@ -66,6 +66,50 @@ impl HistogramView {
         });
     }
 
+    pub fn move_selection_up(
+        &mut self,
+        size: usize,
+        data: &mut Vec<Column>,
+        table: &TableView,
+        uidata: &mut UIData,
+    ) {
+        if self.curser_row > 0 {
+            // Curser somewhere in the middle
+            self.curser_row = self.curser_row.saturating_sub(size);
+        } else {
+            // Curser at the top
+            if self.curser_offset > 0 {
+                // Shift table up
+                self.curser_offset = self.curser_offset.saturating_sub(size);
+            }
+        }
+        self.update(self.last_column_idx, data, table, uidata);
+    }
+
+    pub fn move_selection_down(
+        &mut self,
+        size: usize,
+        data: &mut Vec<Column>,
+        table: &TableView,
+        uidata: &mut UIData,
+    ) {
+        if self.curser_row + self.curser_offset < (self.value_data.len() - 1) {
+            // Somewhere in the middle
+            if self.curser_row < self.height - 1 {
+                // Somewhere in the middle of the table
+                self.curser_row =
+                    std::cmp::min(self.curser_row + size, self.value_view.data.len() - 1);
+            } else {
+                // At the bottom of the table, need to shift table down
+                self.curser_offset =
+                    std::cmp::min(self.curser_offset + size, self.value_data.len() - 1);
+                self.curser_row =
+                    std::cmp::min(self.height - 1, self.value_data.len() - self.curser_offset);
+            }
+            self.update(self.last_column_idx, data, table, uidata);
+        }
+    }
+
     pub fn update(
         &mut self,
         column_idx: usize,

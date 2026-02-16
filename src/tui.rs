@@ -246,15 +246,25 @@ impl TableUI {
             for _ in 0..data.layout.table_height {
                 rows.push(Row::new([""]).style(self.styles.row));
             }
-            let widths = [Constraint::Length(area.width)];
+            let widths: Vec<Constraint>;
+            let header: Row;
 
-            let header = Row::new(
-                columns
+            if columns.is_empty() {
+                widths = vec![Constraint::Length(area.width)];
+                header = Row::new(vec![Cell::from("NO DATA")]);
+            } else {
+                widths = columns
                     .iter()
-                    .map(|c| Cell::from(c.name.clone()))
-                    .collect::<Vec<Cell>>(),
-            )
-            .style(self.styles.header);
+                    .map(|c| Constraint::Length(c.width as u16))
+                    .collect::<Vec<Constraint>>();
+                header = Row::new(
+                    columns
+                        .iter()
+                        .map(|c| Cell::from(c.name.clone()))
+                        .collect::<Vec<Cell>>(),
+                )
+                .style(self.styles.header);
+            }
 
             let table = Table::new(rows, widths).header(header);
             frame.render_widget(table, area);
