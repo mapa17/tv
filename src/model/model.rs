@@ -330,93 +330,115 @@ impl Model {
 
         //trace!("Update: Modus {:?}, Message {:?}", self.modus, message);
         if let Some(msg) = message {
-            match self.modus {
-                Modus::TABLE => match msg {
-                    Message::Quit => self.quit(),
-                    Message::MoveDown => self.move_table_selection_down(1),
-                    Message::MoveLeft => self.move_table_selection_left(),
-                    Message::MoveRight => self.move_table_selection_right(),
-                    Message::MoveUp => self.move_table_selection_up(1),
-                    Message::MovePageUp => {
-                        self.move_table_selection_up(self.uilayout.table_height + 1)
-                    }
-                    Message::MovePageDown => {
-                        self.move_table_selection_down(self.uilayout.table_height + 1)
-                    }
-                    Message::MoveBeginning => self.move_table_selection_beginning(),
-                    Message::MoveEnd => self.move_table_selection_end(),
-                    Message::ToggleColumnState => self.toggle_column_status(false),
-                    Message::ToggleExpandColumnState => self.toggle_column_status(true),
-                    Message::ToggleIndex => self.toggle_table_index(),
-                    Message::Resize(width, height) => self.ui_resize(width, height),
-                    Message::CopyCell => self.copy_table_cell(),
-                    Message::CopyRow => self.copy_table_row(),
-                    Message::Help => self.show_help(),
-                    Message::EnterCommand => self.enter_cmd_mode(CMDMode::Raw),
-                    Message::Search => self.enter_cmd_mode(CMDMode::SearchTable),
-                    Message::Filter => self.enter_cmd_mode(CMDMode::FilterByColumn),
-                    Message::SearchInColumn => self.enter_cmd_mode(CMDMode::SearchInColumn),
-                    Message::Enter => self.enter(),
-                    Message::Exit => self.exit(),
-                    Message::Histogram => {
-                        self.previous_modus = self.modus;
-                        self.modus = Modus::HISTOGRAM;
-                        self.update_histogram()
-                    }
-                    Message::SearchNext => self.search_next(1),
-                    Message::SearchPrev => self.search_next(-1),
-                    Message::SortAscending => self.sort_current_column(true),
-                    Message::SortDescending => self.sort_current_column(false),
-                    Message::MoveToFirstColumn => {
-                        self.select_cell(
-                            self.tables.last().unwrap().curser_row
-                                + self.tables.last().unwrap().offset_row,
-                            0,
-                        );
-                    }
-                    Message::MoveToLastColumn => {
-                        let table = self.tables.last().unwrap();
-                        self.select_cell(table.curser_row + table.offset_row, self.data.len() - 1);
-                    }
-                    _ => (),
-                },
-                Modus::RECORD => match msg {
-                    Message::Quit => self.quit(),
-                    Message::MoveDown => self.move_record_selection_down(1),
-                    Message::MoveLeft => self.previous_record(),
-                    Message::MoveRight => self.next_record(),
-                    Message::MoveUp => self.move_record_selection_up(1),
-                    Message::MovePageUp => self.move_record_selection_up(10),
-                    Message::MovePageDown => self.move_record_selection_down(10),
-                    Message::Resize(width, height) => self.ui_resize(width, height),
-                    Message::CopyCell => self.copy_record_cell(),
-                    Message::Help => self.show_help(),
-                    Message::Enter => self.enter(),
-                    Message::Exit => self.exit(),
-                    _ => (),
-                },
-                Modus::HISTOGRAM => match msg {
-                    Message::Quit => self.quit(),
-                    Message::MoveDown => self.move_histogram_selection_down(1),
-                    Message::MoveUp => self.move_histogram_selection_up(1),
-                    Message::MovePageUp => self.move_histogram_selection_up(10),
-                    Message::MovePageDown => self.move_histogram_selection_down(10),
-                    Message::Resize(width, height) => self.ui_resize(width, height),
-                    Message::Help => self.show_help(),
-                    Message::Enter => self.enter(),
-                    Message::Exit => self.exit(),
-                    _ => (),
-                },
+            if self.data.is_empty()
+                || self.data[0].data.is_empty()
+                || self.tables.is_empty()
+                || self.tables.last().unwrap().rows.is_empty()
+            {
+                info!("Empty Table, switch to minimal mode!");
+                match self.modus {
+                    Modus::TABLE => match msg {
+                        Message::Quit => self.quit(),
+                        Message::Resize(width, height) => self.ui_resize(width, height),
+                        Message::Help => self.show_help(),
+                        Message::EnterCommand => self.enter_cmd_mode(CMDMode::Raw),
+                        Message::Exit => self.exit(),
+                        _ => (),
+                    },
+                    _ => {}
+                }
+            } else {
+                match self.modus {
+                    Modus::TABLE => match msg {
+                        Message::Quit => self.quit(),
+                        Message::MoveDown => self.move_table_selection_down(1),
+                        Message::MoveLeft => self.move_table_selection_left(),
+                        Message::MoveRight => self.move_table_selection_right(),
+                        Message::MoveUp => self.move_table_selection_up(1),
+                        Message::MovePageUp => {
+                            self.move_table_selection_up(self.uilayout.table_height + 1)
+                        }
+                        Message::MovePageDown => {
+                            self.move_table_selection_down(self.uilayout.table_height + 1)
+                        }
+                        Message::MoveBeginning => self.move_table_selection_beginning(),
+                        Message::MoveEnd => self.move_table_selection_end(),
+                        Message::ToggleColumnState => self.toggle_column_status(false),
+                        Message::ToggleExpandColumnState => self.toggle_column_status(true),
+                        Message::ToggleIndex => self.toggle_table_index(),
+                        Message::Resize(width, height) => self.ui_resize(width, height),
+                        Message::CopyCell => self.copy_table_cell(),
+                        Message::CopyRow => self.copy_table_row(),
+                        Message::Help => self.show_help(),
+                        Message::EnterCommand => self.enter_cmd_mode(CMDMode::Raw),
+                        Message::Search => self.enter_cmd_mode(CMDMode::SearchTable),
+                        Message::Filter => self.enter_cmd_mode(CMDMode::FilterByColumn),
+                        Message::SearchInColumn => self.enter_cmd_mode(CMDMode::SearchInColumn),
+                        Message::Enter => self.enter(),
+                        Message::Exit => self.exit(),
+                        Message::Histogram => {
+                            self.previous_modus = self.modus;
+                            self.modus = Modus::HISTOGRAM;
+                            self.update_histogram()
+                        }
+                        Message::SearchNext => self.search_next(1),
+                        Message::SearchPrev => self.search_next(-1),
+                        Message::SortAscending => self.sort_current_column(true),
+                        Message::SortDescending => self.sort_current_column(false),
+                        Message::MoveToFirstColumn => {
+                            self.select_cell(
+                                self.tables.last().unwrap().curser_row
+                                    + self.tables.last().unwrap().offset_row,
+                                0,
+                            );
+                        }
+                        Message::MoveToLastColumn => {
+                            let table = self.tables.last().unwrap();
+                            self.select_cell(
+                                table.curser_row + table.offset_row,
+                                self.data.len() - 1,
+                            );
+                        }
+                        _ => (),
+                    },
+                    Modus::RECORD => match msg {
+                        Message::Quit => self.quit(),
+                        Message::MoveDown => self.move_record_selection_down(1),
+                        Message::MoveLeft => self.previous_record(),
+                        Message::MoveRight => self.next_record(),
+                        Message::MoveUp => self.move_record_selection_up(1),
+                        Message::MovePageUp => self.move_record_selection_up(10),
+                        Message::MovePageDown => self.move_record_selection_down(10),
+                        Message::Resize(width, height) => self.ui_resize(width, height),
+                        Message::CopyCell => self.copy_record_cell(),
+                        Message::Help => self.show_help(),
+                        Message::Enter => self.enter(),
+                        Message::Exit => self.exit(),
+                        _ => (),
+                    },
+                    Modus::HISTOGRAM => match msg {
+                        Message::Quit => self.quit(),
+                        Message::MoveDown => self.move_histogram_selection_down(1),
+                        Message::MoveUp => self.move_histogram_selection_up(1),
+                        Message::MovePageUp => self.move_histogram_selection_up(10),
+                        Message::MovePageDown => self.move_histogram_selection_down(10),
+                        Message::Resize(width, height) => self.ui_resize(width, height),
+                        Message::Help => self.show_help(),
+                        Message::Enter => self.enter(),
+                        Message::Exit => self.exit(),
+                        _ => (),
+                    },
 
-                Modus::POPUP => match msg {
-                    Message::Quit => self.quit(),
-                    Message::Resize(width, height) => self.ui_resize(width, height),
-                    Message::Exit => self.exit(),
-                    _ => (),
-                },
-                Modus::CMDINPUT => {
-                    if let Message::RawKey(key) = msg {
-                        self.raw_input(key)
+                    Modus::POPUP => match msg {
+                        Message::Quit => self.quit(),
+                        Message::Resize(width, height) => self.ui_resize(width, height),
+                        Message::Exit => self.exit(),
+                        _ => (),
+                    },
+                    Modus::CMDINPUT => {
+                        if let Message::RawKey(key) = msg {
+                            self.raw_input(key)
+                        }
                     }
                 }
             }

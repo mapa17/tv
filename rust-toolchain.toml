@@ -14,8 +14,9 @@ channel = "1.93.1"
 # Install additional rustup components automatically.
 # These are NOT cargo tools — they are part of the Rust toolchain.
 components = [
-    "clippy",  # Linter used in CI / pre-commit via husky
-    "rustfmt", # Ensures consistent formatting
+    "clippy",        # Linter used in CI / pre-commit via husky
+    "rustfmt",       # Ensures consistent formatting
+    "rust-analyzer", # Provides IDE support for code analysis
 ]
 
 # Keep install lightweight.
