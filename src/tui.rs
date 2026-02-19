@@ -338,7 +338,7 @@ impl TableUI {
         let right = if data.nrows > 0 {
             format!("{}/{}", data.abs_selected_row + 1, data.nrows)
         } else {
-            format!("0/0")
+            "0/0".to_string()
         };
         let left = match data.cmd_mode {
             Some(mode) => {
