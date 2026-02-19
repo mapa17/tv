@@ -335,7 +335,11 @@ impl TableUI {
         let mut render_curser = false;
         let mut prompt = String::new();
 
-        let right = format!("{}/{}", data.abs_selected_row + 1, data.nrows);
+        let right = if data.nrows > 0 {
+            format!("{}/{}", data.abs_selected_row + 1, data.nrows)
+        } else {
+            format!("0/0")
+        };
         let left = match data.cmd_mode {
             Some(mode) => {
                 render_curser = true;

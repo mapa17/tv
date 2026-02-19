@@ -336,16 +336,16 @@ impl Model {
                 || self.tables.last().unwrap().rows.is_empty()
             {
                 info!("Empty Table, switch to minimal mode!");
-                match self.modus {
-                    Modus::TABLE => match msg {
+                self.set_status_message("Empty table!".to_string());
+                if let Modus::TABLE = self.modus {
+                    match msg {
                         Message::Quit => self.quit(),
                         Message::Resize(width, height) => self.ui_resize(width, height),
                         Message::Help => self.show_help(),
                         Message::EnterCommand => self.enter_cmd_mode(CMDMode::Raw),
                         Message::Exit => self.exit(),
                         _ => (),
-                    },
-                    _ => {}
+                    }
                 }
             } else {
                 match self.modus {
@@ -705,7 +705,9 @@ impl Model {
             matches.len(),
             search_duration
         );
-
+        if matches.is_empty() {
+            self.set_status_message("Empty table!".to_string());
+        }
         self.filter_table(matches);
     }
 

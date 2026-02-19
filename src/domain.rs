@@ -106,8 +106,8 @@ pub const HELP_TEXT: &str = "
     y           : Copy cell value
     Y           : Copy row
     Tab         : Expand/Collapse column
-    f           : Search in complete table
-    F           : Search in current column
+    /           : Search in current column
+    Ctrl+/      : Search in complete table
     n           : Jump to next search result
     p           : Jump to previous search result
     /           : Filter table on matches in the current column
