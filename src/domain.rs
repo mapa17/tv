@@ -92,7 +92,7 @@ pub const HELP_TEXT: &str = "
 
                 == Table View ==
     Enter       : Enter Record view for selected cell.
-    v         : Show Row Index
+    v           : Show Row Index
     h           : Move selection to the left.
     j/Left      : Move selection to the down.
     k/Up        : Move selection to the up.
@@ -106,12 +106,12 @@ pub const HELP_TEXT: &str = "
     y           : Copy cell value
     Y           : Copy row
     Tab         : Expand/Collapse column
-    f           : Search in complete table
-    F           : Search in current column
+    /           : Search in current column
+    Ctrl+/      : Search in complete table
     n           : Jump to next search result
     p           : Jump to previous search result
-    |           : Filter table on matches in the current column
-    u           : Show histogram of current column
+    /           : Filter table on matches in the current column
+    #           : Show histogram of current column
     [           : Sort in ascending order
     ]           : Sort in descending order
 

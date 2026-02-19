@@ -1,0 +1,30 @@
+# This file tells rustup which Rust toolchain to use
+# when working inside this project directory.
+#
+# It ensures all developers and CI use the same compiler
+# and required built-in tooling.
+
+[toolchain]
+
+# Pin an exact Rust version for reproducible builds.
+# Avoid "stable" for teams — it changes over time.
+# Get your current version with `rustc --version` and update as needed.
+channel = "1.93.1"
+
+# Install additional rustup components automatically.
+# These are NOT cargo tools — they are part of the Rust toolchain.
+components = [
+    "clippy",        # Linter used in CI / pre-commit via husky
+    "rustfmt",       # Ensures consistent formatting
+    "rust-analyzer", # Provides IDE support for code analysis
+]
+
+# Keep install lightweight.
+# Installs compiler + cargo + specified components only.
+profile = "minimal"
+
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "x86_64-pc-windows-gnu",
+]

@@ -1,4 +1,27 @@
-## Compilation
+## Installation
+
+The project is configured to define the build chains used for the project and setups multiple
+auxiliary tools like hasky-rs to execute pre-commit hooks.
+
+Install the debian supported dev environment with
+
+
+```sh
+git clone git@github.com:mapa17/tv.git
+cd tv
+
+# Install rust if you have not yet done so
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Setup project and install dependencies
+sh docs/install-dev-tools.sh
+
+# Build binary
+cargo build --release
+```
+
+
+## Multi platform compilation
 tv can be compiled to different targets using cargo.
 
 ```sh

@@ -107,12 +107,9 @@ impl UIStyles {
 }
 
 pub struct TableUI {
-    colors: UIColors,
     styles: UIStyles,
     table_state: TableState,
     scrollbar_state: ScrollbarState,
-    table_width: usize,
-    table_heigh: usize,
     last_render: Instant,
     //headers: Vec<HeaderElement>,
     //visible_headers: Vec<usize>,
@@ -141,12 +138,9 @@ impl TableUI {
         let styles = UIStyles::new(&colors);
 
         Self {
-            colors,
             styles,
             table_state: TableState::default(),
             scrollbar_state: ScrollbarState::new(1).position(0),
-            table_width: 0,
-            table_heigh: 0,
             last_render: Instant::now() - std::time::Duration::from_secs(1),
         }
     }
@@ -246,19 +240,37 @@ impl TableUI {
     }
     fn render_table(&mut self, data: &UIData, frame: &mut Frame, area: Rect) {
         let columns = &data.table;
-        if columns.is_empty() {
+        if columns.is_empty() || columns[0].data.is_empty() {
+            // Render an empty table
             let mut rows = Vec::new();
             for _ in 0..data.layout.table_height {
                 rows.push(Row::new([""]).style(self.styles.row));
             }
-            let widths = [Constraint::Length(area.width)];
+            let widths: Vec<Constraint>;
+            let header: Row;
 
-            let header = Row::new(["Loading ..."]).style(self.styles.header);
+            if columns.is_empty() {
+                widths = vec![Constraint::Length(area.width)];
+                header = Row::new(vec![Cell::from("NO DATA")]);
+            } else {
+                widths = columns
+                    .iter()
+                    .map(|c| Constraint::Length(c.width as u16))
+                    .collect::<Vec<Constraint>>();
+                header = Row::new(
+                    columns
+                        .iter()
+                        .map(|c| Cell::from(c.name.clone()))
+                        .collect::<Vec<Cell>>(),
+                )
+                .style(self.styles.header);
+            }
 
             let table = Table::new(rows, widths).header(header);
             frame.render_widget(table, area);
             return;
         }
+
         let mut rows = Vec::new();
         let nrows = data.table[0].data.len(); // Assume there is always at least one column
         for ridx in 0..nrows {
@@ -323,7 +335,11 @@ impl TableUI {
         let mut render_curser = false;
         let mut prompt = String::new();
 
-        let right = format!("{}/{}", data.abs_selected_row + 1, data.nrows);
+        let right = if data.nrows > 0 {
+            format!("{}/{}", data.abs_selected_row + 1, data.nrows)
+        } else {
+            "0/0".to_string()
+        };
         let left = match data.cmd_mode {
             Some(mode) => {
                 render_curser = true;
