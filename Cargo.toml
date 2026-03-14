@@ -10,7 +10,7 @@ license = "MIT"
 
 [dependencies]
 arboard = "3.6.1"
-clap = { version = "4.5.60", features = ["derive"] }
+clap = { version = "4.6.0", features = ["derive"] }
 derive_setters = "0.1.8"
 polars = { version = "0.52.0", features = [
     "lazy",
