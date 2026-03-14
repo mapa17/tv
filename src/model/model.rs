@@ -55,7 +55,7 @@ pub struct Model {
     data: Vec<Column>,
     pub tables: Vec<TableView>,
     record_view: RecordView,
-    histogram_view: HistogramView,
+    histogram_views: Vec<HistogramView>,
     //current_table: usize,
     last_update: Instant,
     last_data_change: Instant,
@@ -81,7 +81,7 @@ impl Model {
             data: Vec::new(),
             tables: Vec::new(),
             record_view: RecordView::empty(),
-            histogram_view: HistogramView::empty(),
+            histogram_views: Vec::new(),
             last_update: Instant::now() - std::time::Duration::from_secs(1),
             last_data_change: Instant::now(),
             uilayout: UILayout::from_values(0, ui_width, ui_height),
@@ -140,6 +140,10 @@ impl Model {
             .to_string();
 
         self.tables.push(table);
+
+        let hist = HistogramView::empty();
+        self.histogram_views.push(hist);
+
         self.data = columns;
         self.update_table_data();
         self.set_status_message(format!("Loaded data in {}ms ...", data_loading_duration));
@@ -175,7 +179,7 @@ impl Model {
     }
 
     fn update_histogram(&mut self) {
-        let hist = &mut self.histogram_view;
+        let hist = self.histogram_views.last_mut().unwrap();
         let table = self.tables.last().unwrap();
         let column_idx = table.offset_column + table.curser_column;
         self.uidata.layout = self.uilayout.clone();
@@ -471,7 +475,7 @@ impl Model {
             }
             Modus::RECORD => {}
             Modus::HISTOGRAM => {
-                let hist = &self.histogram_view;
+                let hist = self.histogram_views.last().unwrap();
                 let table = self.tables.last().unwrap();
                 let term = hist.value_data[hist.curser_offset + hist.curser_row].clone();
                 let matches = self.data[hist.column_idx].search(&term, &table.rows);
@@ -490,6 +494,7 @@ impl Model {
                 // Nothing todo, there is no exit from table, only quit
                 if self.tables.len() > 1 {
                     self.tables.pop();
+                    self.histogram_views.pop();
                     self.update_table_data();
                 }
             }
@@ -718,6 +723,10 @@ impl Model {
         let resolved_indices: Vec<usize> = indices.iter().map(|&midx| table.rows[midx]).collect();
         new_table.rows = Arc::new(resolved_indices);
         self.tables.push(new_table);
+
+        let new_hist = HistogramView::empty();
+        self.histogram_views.push(new_hist);
+
         self.update_table_data();
     }
 
@@ -804,7 +813,7 @@ impl Model {
     }
 
     fn move_histogram_selection_up(&mut self, size: usize) {
-        let hist = &mut self.histogram_view;
+        let hist = self.histogram_views.last_mut().unwrap();
         hist.move_selection_up(
             size,
             &mut self.data,
@@ -820,7 +829,7 @@ impl Model {
     }
 
     fn move_histogram_selection_down(&mut self, size: usize) {
-        let hist = &mut self.histogram_view;
+        let hist = self.histogram_views.last_mut().unwrap();
         hist.move_selection_down(
             size,
             &mut self.data,
