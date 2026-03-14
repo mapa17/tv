@@ -86,7 +86,7 @@ pub fn initialize_logging(_cfg: &TVConfig, args: &TVArguments) -> Result<(), std
 
 #[derive(Parser)]
 #[command(name = "TV")]
-#[command(version = "1.0")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "TUI Table viewer", long_about = None)]
 struct Cli {
     /// Location of file to open

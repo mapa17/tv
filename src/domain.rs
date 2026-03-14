@@ -53,6 +53,17 @@ pub struct TVConfig {
     pub light_colors: bool,
 }
 
+impl TVConfig {
+    pub fn default() -> TVConfig {
+        TVConfig {
+            event_poll_time: 100,
+            max_column_width: 25,
+            column_margin: 1,
+            light_colors: true,
+        }
+    }
+}
+
 #[derive(PartialEq, Debug)]
 pub enum Message {
     MoveUp,
