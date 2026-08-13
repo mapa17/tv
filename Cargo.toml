@@ -27,7 +27,7 @@ tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [dev-dependencies]
-husky-rs = "0.3.3"
+husky-rs = "0.4.0"
 
 # Debug profile that includes debug info and no optimizations
 [profile.dev]
